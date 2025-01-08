@@ -1,0 +1,430 @@
+---
+title: Does why we drink matter? Exploring the role of drinking motives in the consumption
+  of no- and low-alcohol across the sociodemographic spectrum. Study 1 Analysis
+  HYPOTHESIS 1
+author: "Lucy Burke"
+date: "17/07/2023"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+# Set WD and read in the datasets
+
+# Code written in the top line just applies to that chunk. Code written below is the default for the whole document, but can be overwritten in individual code chunks as required. 
+
+# This first chunk of code includes default formatting options when knitting the document, e.g. whether to include the R code chunks in the knitted report or not [echo=TRUE (yes), or ECHO=FALSE (no)], or general formatting of plots etc.
+
+# For ease of navigation, can name each r chunk after the {r insert name, ...}
+
+# Help > Markdown Quick Reference provides an overview of formatting options in the lower right hand window. 
+
+# echo -refers to code only
+# message - refers to any error messages arising from the code
+# include - refers to code and all outputs
+
+# Display all code chunks as default
+knitr::opts_chunk$set(echo = FALSE)
+
+# Centre align all plots as default
+knitr::opts_chunk$set(fig.align = 'center')
+
+# Set working directory for code (this should apply to full file unless specified otherwise)
+knitr::opts_knit$set(root.dir = "SET WD Code") 
+
+```
+
+
+
+
+```{r load R libraries, message = FALSE} 
+
+# Above code prevents any error messages/ masked functions arising from this code chunk etc from displaying in the knitted document.
+
+# Identify packages required, but not yet installed and install them. 
+
+# 1. check whether required packages are already installed 
+packages <- c("tidyverse", "foreign", "janitor", "sjmisc", "readr", "tidymodels", "finalfit", "haven", "parsnip", "ggplot2", "gtools", "dplyr", "lavaan", "misty", "mice", "gridExtra", "car", "semPlot", "lavaanPlot", "ordinal", "knitr", "rmarkdown")  
+ 
+# 2. identify which packages have not yet been installed     
+new_packages <- packages[!(packages %in% installed.packages()[ ,"Package"])]
+
+# 3. install any new packages
+if(length(new_packages)) {
+  install.packages(new_packages)
+}
+
+# Read in required libraries
+library(tidyverse)
+library(foreign) # this package is required to read in SPSS files
+library(dplyr) #this needs to be loaded after plyr. 
+library(janitor) # used for summary statistics
+library(sjmisc) # used for recoding into a new variable with label names
+library(readr)
+library(tidymodels)
+library(finalfit) #use this package when working with missing data
+library(ggplot2) #for plotting graphs
+library(haven) #use to assign variable and value labels
+library(parsnip) #used in logistic regression
+library(lavaan) #sem
+library(psych)
+library(mice) #multiple imputation using chained equations
+library(naniar) #use for little's test of mcar 
+library(misty) #for little's test of mcar 
+library(gridExtra) #for Cook's D
+library(car) #for Box Tidwell
+#library(semPlot) #plotting for SEM - not working atm so will reload if needed. 29.2.24
+#library(lavaanPlot) #plotting for SEM - not working atm so will reload if needed. 29.2.24
+library(ordinal) #used for ordinal regression
+library(knitr) #used so that can set up equivalent of a wd in markdown where data saved elsewhere to script
+library(rmarkdown) #used in the next Markdown doc to run this document and render it
+  
+```
+
+
+
+```{r Open clean datafile with SG missing}
+
+# The code below loads the cleaned data that has inconsistent responses removed.
+# N=2757
+
+# Load the cleaned data from the RDS file
+Study1dataC<- readRDS("PATHWAY - cleaned_data.rds") # Retrieve from pathway set for this file when saved
+
+```
+
+```{r Missing data summaries for the clean dataset}
+
+# Checking missing data Clean dataset
+missing_counts <- colSums(is.na(Study1dataC))
+print(missing_counts)
+```
+
+
+
+
+```{r Frequencies for DM items}
+
+# Identify frequencies where respondent has as NA response for any of the drinking motives items. These were originally 'Don't know' responses which is not a recognised response to the questionnaire items. There were no true missings for these items after the extended sample cases were removed.  
+
+# First check the contents of these variables
+tabyl(Study1dataC$enh5L)
+tabyl(Study1dataC$soc5L)
+tabyl(Study1dataC$con5L)
+tabyl(Study1dataC$anx5L)
+tabyl(Study1dataC$dep5L)
+tabyl(Study1dataC$sexz)
+
+```
+
+
+```{r Drop NA responses}
+
+# Drop NA responses to DM items as don't want to impute these
+
+Data_for_impute <- Study1dataC[complete.cases(Study1dataC[, c("enh5L", "con5L", "soc5L", "anx5L", "dep5L")]), ]
+
+# N= 2568 (there were n=189, 7% of respondents with at least one don't know response)
+
+# REMOVE Don't know as a response level
+
+# List of drinking motive variables
+motive_variables <- c("enh5L", "con5L", "soc5L", "anx5L", "dep5L")
+
+# Loop through each motive variable
+for (motive_var in motive_variables) {
+  # Remove 'Don't know' as a factor level
+  Data_for_impute[[motive_var]] <- droplevels(Data_for_impute[[motive_var]])
+}
+
+# Check the levels for each motive variable
+for (motive_var in motive_variables) {
+  cat("Levels for", motive_var, "after removing 'Don't know':\n")
+  cat(levels(Data_for_impute[[motive_var]]), "\n\n")
+}
+
+
+
+
+```
+
+
+There were 2568 cases after removing the cases that had reported 'don't know' for any DM item from full sample of 2757.
+
+```{r REMOVE IN ANOTHER WAY CASES}
+
+# Remove cases where sexz identified 'in another way' as such few numbers. 
+# CHECK is this the right place to do this or should I leave them in until I run the actual models?
+tabyl(Data_for_impute$sexz) # frequencies for sex variable
+Data_for_impute <- subset(Data_for_impute, !(sexz == 'In another way' & !is.na(sexz))) # subset the MI dataset excluding cases that identified their sex 'in another way' to male or female. 
+
+
+# Remove in another way as a factor level
+
+# Remove 'In another way' as a factor level
+Data_for_impute$sexz <- droplevels(Data_for_impute$sexz)
+
+# Check frequencies for sex variable after removing the level
+tabyl(Data_for_impute$sexz)
+
+
+# Checking missing data Clean dataset
+missing_counts <- colSums(is.na(Data_for_impute))
+print(missing_counts)
+
+
+```
+
+
+
+```{r SAVE CLEANED DATAFILE}
+
+# Save the cleaned data to an RDS file
+saveRDS(Data_for_impute, "SET PATHWAY - Clean_data_no_imputes.rds")
+
+```
+
+Sample now 2555
+ 
+*****
+# Multiple Imputation
+
+See http://www.regorz-statistik.de/en/r_multiple_imputation.html
+https://www.rdocumentation.org/packages/mice/versions/3.16.0/topics/mice The mice package implements a method to deal with missing data. The package creates multiple imputations (replacement values) for multivariate missing data. The method is based on Fully Conditional Specification, where each incomplete variable is imputed by a separate model. The MICE algorithm can impute mixes of continuous, binary, unordered categorical and ordered categorical data. In addition, MICE can impute continuous two-level data, and maintain consistency between imputations by means of passive imputation. Many diagnostic plots are implemented to inspect the quality of the imputations.
+
+Rule of thumb for number of iterations - at least as many as % of missing data. 17.1% cases had at least one missing item so performed 18 runs.
+
+Here is a current journal article giving theoretical background and specific recommendations regarding the use of multiple imputation for missing data:
+Austin, P. C., White, I. R., Lee, D. S., & van Buuren, S. (2020). Missing data in clinical research: a tutorial on multiple imputation. Canadian Journal of Cardiology.
+https://www.sciencedirect.com/science...
+
+https://www.youtube.com/watch?v=ghmU7nodhSM
+
+# Notes 
+1. I have used agez rather than actage because actage had missing data (agez did not) and when included both a ridge penalty was added due to high collinearity between these variables. 
+
+```{r MULTIPLE IMPUTATION PREP}
+
+# Identify the variables to be included in the full imputed dataset
+MIA_matrix <- Data_for_impute[c ("sexz", "agez", "sg4R", "ed4",  "imd_quintile", "home_owner", "audit1", "audit2", "audit3", "auditc", "nolo_monthly", "enh5L", "soc5L", "con5L", "dep5L", "anx5L", "urban", "region", "ft_emp", "enhBIN", "socBIN", "depBIN", "conBIN", "anxBIN", "weight_gb")]  
+
+# N= 2555 - removed 13 cases
+
+# Checking missing data MIA_matrix 
+missing_counts <- colSums(is.na(MIA_matrix))
+
+# Display the missing value counts
+print(missing_counts)
+
+# Create missing data pattern plot
+md_pattern_plot <- md.pattern(MIA_matrix)
+
+# Perform Little's MCAR test (exclude BIN variables)
+# Remove columns that contain "BIN" in their names
+MIA_matrix_filtered <- MIA_matrix[, !grepl("BIN", colnames(MIA_matrix))]
+result <- mcar_test(MIA_matrix_filtered)
+
+# Print the test result
+print(result)
+
+
+
+# List of columns to be selected
+columns_to_select <- c("sexz", "agez", "sg4R", "ed4", "imd_quintile", "home_owner", "audit1", "audit2", "audit3", "auditc", 
+                       "nolo_monthly", "enh5L", "soc5L", "con5L", "dep5L", "anx5L", "urban", "region", "ft_emp", "enhBIN", "socBIN", "depBIN", "conBIN", "anxBIN", "weight_gb")
+
+# Check for missing columns
+missing_columns <- setdiff(columns_to_select, names(Data_for_impute))
+
+# Print missing columns
+if (length(missing_columns) > 0) {
+  cat("The following columns are missing from Data_for_impute:\n")
+  print(missing_columns)
+} else {
+  cat("All columns are present in Data_for_impute.\n")
+  
+  # Select the variables to be included in the full imputed dataset
+  MIA_matrix <- Data_for_impute[columns_to_select]
+}
+
+colnames(Data_for_impute)
+
+
+
+```
+
+For most variables, there is no missing data. The following variables had missing data:
+sex = n=6
+sg4r = 106
+imd_quintile = 358
+ft_emp = 7
+There were 6 patterns of missing data. Little's MCAR test was highly significant, but it is influenced by sample size. Have proceeded assuming data is MAR. 
+
+Missing data in 17.1% of cases
+
+```{r cHECKING vARIABLE TYPES}
+
+# Make sure all factor variables are defined as the correct type of variable e.g. numerical, factor
+
+# Check class of variables correct for the model
+variable_types <- sapply(MIA_matrix, class)
+print(variable_types)
+
+# Change DM ft_emp and home owner to be a factor
+MIA_matrix$sexz <- as.factor(MIA_matrix$sexz)
+MIA_matrix$agez <- as.ordered(MIA_matrix$agez)
+MIA_matrix$sg4R <- as.ordered(MIA_matrix$sg4R)
+MIA_matrix$ed4 <- as.ordered(MIA_matrix$ed4)
+MIA_matrix$imd_quintile <- as.numeric(MIA_matrix$imd_quintile) # Have amended code now so that integers on impute. 
+MIA_matrix$audit1 <- as.ordered(MIA_matrix$audit1)
+MIA_matrix$audit2 <- as.ordered(MIA_matrix$audit2)
+MIA_matrix$audit3 <- as.ordered(MIA_matrix$audit3)
+MIA_matrix$auditc <- as.numeric(MIA_matrix$auditc)
+MIA_matrix$nolo_monthly <- as.factor(MIA_matrix$nolo_monthly)
+MIA_matrix$soc5L  <- as.numeric(MIA_matrix$soc5L)
+MIA_matrix$anx5L  <- as.numeric(MIA_matrix$anx5L)
+MIA_matrix$enh5L  <- as.numeric(MIA_matrix$enh5L)
+MIA_matrix$dep5L <- as.numeric(MIA_matrix$dep5L)
+MIA_matrix$con5L <- as.numeric(MIA_matrix$con5L)
+MIA_matrix$urban <- as.ordered(MIA_matrix$urban)
+MIA_matrix$region <- as.factor(MIA_matrix$region)
+MIA_matrix$ft_emp <- as.factor(MIA_matrix$ft_emp)
+MIA_matrix$weight_gb <- as.numeric(MIA_matrix$weight_gb)
+MIA_matrix$home_owner <- as.factor(MIA_matrix$home_owner)
+str(MIA_matrix)
+
+```
+
+
+
+
+
+
+```{r RUNNING THE MI}
+
+# # Create a matrix to specify which variables will inform the imputations 
+# PredMIA <- make.predictorMatrix(MIA_matrix)
+# 
+# # Define the variables to exclude in a single vector
+# exclude_vars <- c("weight_gb", "enhBIN", "socBIN", "depBIN", "conBIN", "anxBIN", 
+#                   "rank_enh5L", "rank_dep5L", "rank_soc5L", "rank_con5L", "rank_anx5L")
+# 
+# # Use setdiff() to get the names to include in imputations, excluding those in exclude_vars
+# PredMIA[setdiff(names(MIA_matrix), exclude_vars), ] <- 1
+# 
+# 
+# # Set all variables to inform imputations (except the weight and DM BIN and ranked variables which are set to to 1 (passive))
+# PredMIA[setdiff(names(MIA_matrix), exclude_vars), ] <- 1
+# 
+# # Set w_gb_integer to 2 to include it in imputed datasets
+# PredMIA[ exclude_vars, ] <- 2
+# 
+# # Define post-processing for rounding imputed values to integers
+# post <- make.post(MIA_matrix)
+# post["imd_quintile"] <- "imp[[j]][, i] <- round(imp[[j]][, i])"
+# 
+# # set seed for the MI - produces same results when rerun 
+# set.seed(1234)
+# 
+# #Perform the imputation analysis
+# MIA_data <- mice(data = MIA_matrix, pred = PredMIA, m = 18, maxit = 100, seed = 1234, print = TRUE) # m = 18 to follow recommendations that produce number of imputations equivalent to % of missing data. I have 17.1% missing data so have produced 18 imputed datasets. maxit = 100 is the maximum number of iterations for the imputation process. 
+# 
+# # Which methods were used?
+# MIA_data
+
+
+
+# Create a matrix to specify which variables will inform the imputations 
+PredMIA <- make.predictorMatrix(MIA_matrix)
+
+# Define the variables to exclude from predicting others
+exclude_vars <- c("weight_gb", "enhBIN", "socBIN", "depBIN", "conBIN", "anxBIN")
+
+# Set all variables to inform imputations (except the weight and DM BIN  which should be passive)
+PredMIA[setdiff(names(MIA_matrix), exclude_vars), ] <- 1  # All other vars can predict others
+
+# Set the rows of the excluded variables to 0, meaning they will not predict anything else, but will still be included
+PredMIA[exclude_vars, ] <- 0  
+
+# Check the predictor matrix to confirm that the excluded variables are passive (rows should be 0)
+print(PredMIA)
+
+# Define post-processing for rounding imputed values to integers (for imd_quintile as an example)
+post <- make.post(MIA_matrix)
+post["imd_quintile"] <- "imp[[j]][, i] <- round(imp[[j]][, i])"
+
+# Set seed for the MI to produce the same results when rerun 
+set.seed(1234)
+
+# Perform the imputation analysis
+MIA_data <- mice(data = MIA_matrix, pred = PredMIA, m = 18, maxit = 100, seed = 1234, print = TRUE)
+
+# Check which methods were used for the imputation
+MIA_data
+
+
+```
+
+
+18 datasets were produced and 100 iterations were run.
+The imputation method for:
+sex was initially polyreg -but now that I've managed to drop 'in another way' as a variable it is now logreg
+sg4R amd imd_quintile also used polyreg as the imputation method 
+
+
+
+
+```{r CHECK FOR CONVERGENCE}
+
+# check if convergence achieved - noisy plots
+plot(MIA_data) 
+summary(MIA_data)$FMI ### 
+
+
+```
+The plots are noisy with no patterns indicating sufficient iterations have been performed. 
+
+
+```{r Validating the MI}
+
+# Check the imputation method for each variable
+print(MIA_data)
+
+# Check the number of imputed datasets in MIA_data
+num_imputed_datasets <- sapply(MIA_data$imp, function(x) length(x))
+
+# Check if it's equal to 18 for each imputation set
+if (all(num_imputed_datasets == 18)) {
+  print("All imputation sets contain 18 complete datasets.")
+} else {
+  print("The number of imputed datasets in at least one set is not 18.")
+}
+
+# View the structure of the variables with imputed data across the datasets
+str(MIA_data$imp[[1]])#sexz
+str(MIA_data$imp[[3]])#sg4R
+str(MIA_data$imp[[5]])#imd_quintile
+str(MIA_data$imp[(20)]) #ft_emp
+
+
+```
+
+All imputation sets contain 18 complete datasets. I've struggled to validate further - I think perhaps how MIA_data is set up as it seems to use 'imp' to correspond to variable placement rather than iteration number and I don't know how to correct this.
+
+
+```{r Save imputed datasets H1}
+
+# Set wd for this chunk
+# setwd("X:/HAR_SP/SP/STU_cmq21lcs/Impact of no and low alcohol/Behavioural model - Study 1/Data")
+# 
+# # Save the imputed datasets so that don't need to rerun mice everytime open R studio
+# 
+# saveRDS(MIA_data, file = "Imputed_data_Study1")
+
+saveRDS(MIA_data, "SET PATHWAY - Imputed_data_Study1_12_nov.rds")
+
+```
+
+

@@ -1,0 +1,1159 @@
+---
+title: Study 1 - Cleaning and data preparation document 
+author: "Lucy Burke"
+date: "4/12/2023"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+
+# Code written in the top line just applies to that chunk. 
+
+# This first chunk of code includes default formatting options when knitting the document, e.g. whether to include the R code chunks in the knitted report or not [echo=TRUE (yes), or ECHO=FALSE (no)], or general formatting of plots etc.
+
+# It can be overwritten in individual code chunks as required. 
+
+# For ease of navigation, can name each r chunk after the {r insert name, ...}
+
+# Help > Markdown Quick Reference provides an overview of formatting options in the lower right hand window. 
+
+# echo -refers to code only
+# message - refers to any error messages arising from the code
+# include - refers to code and all outputs
+
+# Do not dispay code chunks/ error codes as default
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+
+# Centre align all plots as default
+knitr::opts_chunk$set(fig.align = 'center')
+
+# Set working directory for code (this should apply to full file unless specified otherwise)
+knitr::opts_knit$set(root.dir = "SET WD PATHWAY") 
+
+```
+
+
+```{r load R libraries, include = FALSE} 
+
+# Above code prevents any error messages/ masked functions arising from this code chunk etc from displaying in the knitted document.
+
+# Identify packages required, but not yet installed and install them. 
+
+# 1. check whether required packages are already installed 
+packages <- c("tidyverse", "foreign", "janitor", "sjmisc", "readr", "tidymodels", "haven", "ggplot2", "gtools", "dplyr", "misty",  "gridExtra", "car",  "knitr", "rmarkdown", "writexl")  
+
+# 2. identify which packages have not yet been installed     
+new_packages <- packages[!(packages %in% installed.packages()[ ,"Package"])]
+
+# 3. install any new packages
+if(length(new_packages)) {
+  install.packages(new_packages)
+}
+
+# Read in required libraries
+library(tidyverse)
+library(foreign) # this package is required to read in SPSS files
+library(dplyr) #this needs to be loaded after plyr. 
+library(janitor) # used for summary statistics
+library(sjmisc) # used for recoding into a new variable with label names
+library(readr)
+library(tidymodels)
+library(ggplot2) #for plotting graphs
+library(haven) #use to assign variable and value labels
+library(naniar) #use for little's test of mcar 
+library(misty) #for little's test of mcar 
+library(knitr) #used so that can set up equivalent of a wd in markdown where data saved elsewhere to script (Haven't used this in the end)
+library(rmarkdown) #used in the next Markdown doc to run this document and render it
+library(writexl) # used to convert correlation matrix into excel spreadsheet for formatting into a table  
+
+
+
+```
+
+
+```{r read in Ipsos datafiles, include = FALSE}
+
+# Set wd for this chunk
+setwd("SET WD FOR THIS CHUNK") # This is where the ATS  data has been saved
+
+# Read in the Feb 23 and April datafiles from SPSS. 
+Feb23 = read.spss("ATS W196 Feb 23.sav", to.data.frame=TRUE) 
+Apr23 = read.spss("ATS W198 Apr 23.sav", to.data.frame=TRUE)
+
+# Provide detail on variable names for dataset. These were automatically provided. This code does not work on the amended data files as the labels have not been attributed to the variables. I am not sure how to do this. Check whether lose these when merge the file names. 
+Feb23.labels <- as.data.frame(attr(Feb23, "variable.labels")) 
+Apr23.labels <- as.data.frame(attr(Apr23, "variable.labels")) 
+
+# Export data labels to Excel files to copy into the coding workbook for reference
+write_xlsx(Apr23.labels, path = "SET PATHWAY - April_23_ATS_full_variable_list.xlsx")
+
+```
+
+# Preparing the dataset and data cleaning
+
+```{r create dataframes with study 1 variables, include = FALSE}
+
+# Create new datafiles with variables of interest in Study 1. The variables are already classified as either a factor (categorical) or numeric (scale) variable. Audit currently being treated as a scale variable. 
+Feb23_study1var = Feb23[c("sexz", "agez", "actage", "sgz", "tenure", "gor", "ethnic", "dethnin", "qual", "work", "urban", "audit1", "audit2", "audit3", "auditc", "nla1", "nla2", "nla3", "nla4", "naq1_01", "naq1_02", "naq1_03", "naq1_04", "naq1_05", "imd_quintile", "X.weight0", "weight_sy", "weight_gb", "weight_wales", "weight_scotland")] 
+
+Apr23_study1var = Apr23[c("sexz", "agez", "actage", "sgz", "tenure", "gor", "ethnic", "dethnin", "qual", "work", "urban", "audit1", "audit2", "audit3", "auditc", "nla1", "nla2", "nla3", "nla4", "naq1_01", "naq1_02", "naq1_03", "naq1_04", "naq1_05", "imd_quintile", "X.weight0", "weight_sy", "weight_gb", "weight_wales", "weight_scotland")] 
+
+# Remove the extension cases who were not eligible for the Study
+# Sense check these are all from Scotland/ Wales
+nla1_missingA <- Apr23_study1var[is.na(Apr23_study1var$nla1),]
+nla1_missingF <- Feb23_study1var[is.na(Feb23_study1var$nla1),]                                
+# These are all Wales and Scotland so will proceed with removing
+
+# Remove the 287 missing for nla1 cases
+Feb23_study1var <- Feb23_study1var[!is.na(Feb23_study1var$nla1), ]
+Apr23_study1var <- Apr23_study1var[!is.na(Apr23_study1var$nla1), ]
+
+# Drop all non-drinkers 
+Feb23_drinkers = subset(Feb23_study1var, auditc >= 1) 
+Apr23_drinkers = subset(Apr23_study1var, auditc >= 1)
+
+
+```
+
+
+
+
+```{r merge datasets, include  = FALSE}
+
+# Merge datasets including non-drinkers to use to calculate the AUDIT-C alpha
+Data_alpha_audit<- rbind(Feb23_study1var, Apr23_study1var)
+
+# Save this dataset for when run the audit alpha including the non-drinkers
+saveRDS(Data_alpha_audit, "PATHWAY - Audit_alpha.rds")
+
+# Dataset used to create main analyses
+Study1data <- rbind(Feb23_drinkers, Apr23_drinkers)
+
+```
+
+
+### Study Sample
+4,089 adults completed the ATS in the February and April waves. 
+Of these, 2,920 reported an AUDIT C score of at least 1, making them eligible for the study (71.4 %).  
+
+
+## Inconsistent reporting 
+### NoLo consumption - inconsistent reporting
+
+Before any analysis was undertaken, respondents who provided inconsistent responses to the items regarding nolo consumption (i.e. responding that they engaged in situation specific NoLo consumption: hybrid, on-trade, or off-trade more often than they reported drinking NoLo overall) were identified using scatterplots (see below).   
+
+```{r scatterplots for inconsistent NoLo consumption, echo = FALSE}
+
+# Scatterplots to identify participants reporting drinking NoLo on or off trade more than they say they drink it overall
+# Set variables as factors
+Study1data$nla1 <- as.factor(Study1data$nla1) # overall no/lo consumption
+Study1data$nla3 <- as.factor(Study1data$nla3) # ontrade no/lo consumption
+Study1data$nla4 <- as.factor(Study1data$nla4) # offtrade no/lo consumption
+
+# Plot ontrade consumption against overall consumption
+ggplot(Study1data, aes(x = nla1, y = nla3)) +
+  geom_point(position = position_jitter(width = 0.2, height = 0.2)) + # jitter function deals with overlapping and makes plot easier to read. 
+  xlab("Frequency consume NoLo") + # Title for x axiz
+  ylab("Frequency consume nolo ontrade") + # Title for y axis
+  ggtitle("Scatter Plot of overall NoLo consumption and ontrade NoLo consumption") # plot title
+
+# Plot offtrade consumption against overall consumption
+ggplot(Study1data, aes(x = nla1, y = nla4)) +
+  geom_point(position = position_jitter(width = 0.2, height = 0.2)) +
+  xlab("Frequency consume NoLo") +
+  ylab("Frequency consume nolo offtrade") +
+  ggtitle("Scatter Plot of overall NoLo consumption and offtrade NoLo consumption")
+
+
+
+```
+
+
+Respondents in the upper left hand corner of each chart represent those who have responded inconsistently. These respondents were removed which reduced the sample by 163 leaving a sample of 2757 (now using Study1dataC).
+
+```{r drop cases where inconsistent NoLo consumption observed, include = FALSE}
+
+# Set nla1, 3 and 4 as numeric in order to calculate and identify cases where setting consumption higher than overall consumption
+Study1data$nla1N <- as.numeric(Study1data$nla1)
+Study1data$nla3N <- as.numeric(Study1data$nla3)
+Study1data$nla4N <- as.numeric(Study1data$nla4)
+
+# Check for difference in frequency to identify inconsistent reporting and store as new variable
+Study1data$nla1_3diff <- Study1data$nla1N - Study1data$nla3N
+Study1data$nla1_4diff <- Study1data$nla1N - Study1data$nla4N
+
+# Frequency tables for NLAdiff
+tabyl(Study1data$nla1_3diff)
+tabyl(Study1data$nla1_4diff)
+
+# Drop cases for those who have reported inconsistent nla patterns
+Study1dataC = subset(Study1data, nla1_3diff >= 0| is.na(nla1_3diff))
+Study1dataC = subset(Study1dataC, nla1_4diff >= 0| is.na(nla1_4diff))
+
+# Repeat scatterplots to see if this has correctly removed inconsistent reporters
+Study1dataC$nla1 <- as.factor(Study1dataC$nla1)
+Study1dataC$nla3 <- as.factor(Study1dataC$nla3)
+Study1dataC$nla4 <- as.factor(Study1dataC$nla4)
+
+# Plot ontrade (nla3) against overall NoLo consumption
+ggplot(Study1dataC, aes(x = nla1, y = nla3)) +
+  geom_point(position = position_jitter(width = 0.2, height = 0.2)) +
+  xlab("Frequency consume NoLo") +
+  ylab("Frequency consume nolo ontrade") +
+  ggtitle("Scatter Plot of overall NoLo consumption and ontrade NoLo consumption")
+
+# Plot offtrade (nla4) against overall NoLo consumption
+ggplot(Study1dataC, aes(x = nla1, y = nla4)) +
+  geom_point(position = position_jitter(width = 0.2, height = 0.2)) +
+  xlab("Frequency consume NoLo") +
+  ylab("Frequency consume nolo offtrade") +
+  ggtitle("Scatter Plot of overall NoLo consumption and offtrade NoLo consumption")
+
+# remove nlaN variables and nla_diff variables as no longer needed
+Study1dataC = Study1dataC[c("sexz", "agez", "actage", "sgz", "tenure", "gor", "ethnic", "dethnin", "qual", "work", "urban", "audit1", "audit2", "audit3", "auditc", "nla1", "nla2", "nla3", "nla4", "naq1_01", "naq1_02", "naq1_03", "naq1_04", "naq1_05", "imd_quintile", "X.weight0", "weight_sy", "weight_gb", "weight_wales", "weight_scotland")] 
+
+```
+
+
+# Missing data
+
+Complete data was available for 2226 participants (2226/2757 = 80.7%). 
+
+There was missing data against the following variables:
+actage: n=68  (however, agez available for all respondents, therefore decided to use this instead in the analysis)
+sgz: n=116
+sexz: n=7
+dethnin: n=23 (binary ethnicty variable)
+imd_quintile: n=397 (14.4%)
+
+
+The plot appears to show a fairly random pattern of missing data across the observed variables. 
+
+
+```{r missing data descriptives, echo = FALSE}
+
+# Recode NAs as Never for NLA2-4 where NLA1 = Never. 
+# Recode NAs in nla2 where nla1 is "Never" as 1 labeled as "Never"
+Study1dataC$nla2 <- ifelse(is.na(Study1dataC$nla2) & Study1dataC$nla1 == "Never", 1, Study1dataC$nla2)
+
+# Recode NAs in nla3 where nla1 is "Never" as 1 labeled as "Never"
+Study1dataC$nla3 <- ifelse(is.na(Study1dataC$nla3) & Study1dataC$nla1 == "Never", 1, Study1dataC$nla3)
+
+# Recode NAs in nla4 where nla1 is "Never" as 1 labeled as "Never"
+Study1dataC$nla4 <- ifelse(is.na(Study1dataC$nla4) & Study1dataC$nla1 == "Never", 1, Study1dataC$nla4)
+
+# This code is now redundant. 
+# # Recode nla2 NAs as Never where have reported Never for nla1.
+# Study1dataC$nla2 <- ifelse(is.na(Study1dataC$nla2) & Study1dataC$nla1 == "Never", "Never", Study1dataC$nla2)
+# 
+# # Recode nla3 NAs as Never where have reported Never for nla1.
+# Study1dataC$nla3 <- ifelse(is.na(Study1dataC$nla3) & Study1dataC$nla1 == "Never", "Never", Study1dataC$nla3)
+# 
+# # Recode nla4 NAs as Never where have reported Never for nla1.
+# Study1dataC$nla4 <- ifelse(is.na(Study1dataC$nla4) & Study1dataC$nla1 == "Never", "Never", Study1dataC$nla4)
+
+# Produce a plot highlighting where all the missing data is. 
+Study1dataC %>% 
+  missing_plot()
+
+# Produce a vector with the total numbers of NAs for each variable. For items nla2-4 some NA are due to the question being Non-applicable (they never consume NoLo) and others are missing due to non-response. 
+na_counts <- colSums(is.na(Study1dataC)) 
+
+# Display the counts of missing data for each variable
+print(na_counts) 
+
+# Total number of complete cases - excluding nla2-4 as there are NA response that should not be classed as missing. 
+subset_data <- Study1dataC[, !(names(Study1dataC) %in% c("nla2", "nla3", "nla4"))]
+num_complete_cases_excluding <- sum(complete.cases(subset_data))
+
+# Produce an image to help decide whether can conclude whether the data is MAR or NMAR
+# md.pattern(Study1dataC) # Can't work out if there's a way of making this bigger. Time consuming so commented out unless need to run it. 
+
+
+
+```
+
+### Little MCAR Test 
+
+This test asseses the type of missingness in a dataset, specifically whether it can be assumed that the data is missing completely at random (MCAR). The test assumes multivariate normality and scale variables, however it is possible  to breach these assumptions to some extent with large datasets, and by recoding categorical variables as numerical variables. https://www.youtube.com/watch?v=h9CzBtLpt_8
+
+see Rouzinov, S., & Berchtold, A. (2022). Regression-Based Approach to Test Missing Data Mechanisms. *Data*, 7(2), 16. https://doi.org/10.3390/data7020016. 
+
+Little's MCAR test is significant (value=1342.2, p<.001). This indicates that it is not appropriate to accept the null hypothesis that the data is missing completely at random (MCAR) and that the missing data is not ignorable. 
+
+Complete case analysis (CCA) is *not* recommended where data is not MCAR. 
+
+
+```{r MCAR Test, echo = FALSE}
+
+## Little's MCAR test ## 
+# 
+# 1. Recode categorical data into numerical discrete data
+
+# Create new dataset where all variables are numerical 
+Study1MCAR1<- Study1dataC
+
+# Convert all variables in dataset to be numerical
+# Get the total number of columns in the dataframe
+num_cols <- ncol(Study1MCAR1)
+
+# Loop through each column and convert its values to numeric
+for (i in 1:num_cols) {
+  Study1MCAR1[, i] <- as.numeric(Study1MCAR1[, i])
+}
+
+#Perform Little's test on the numerical dataset
+mcar_test(Study1MCAR1)
+
+```
+
+
+
+This suggests data not MCAR.
+
+For the regression analyses - MI was performed for all variables with missing data
+For the SEM, IMD was removed from the model and C1 was used to replace missing SG cases. This reduced missing data to <5% and allowed me to proceed with CCA. 
+
+*****
+
+# Descriptive analyses
+
+## Audit C
+
+
+As drinking was a pre-requisite for inclusion in the study, all respondents report drinking. Audit scores ranged from 1-12 and were positive skewed. 
+Not to be used for descriptives which provided in separate RMD file. 
+
+```{r AUDIT C 1-3 frequency tables }
+
+# Frequency tables for the audit c items
+lapply(Study1dataC[paste0("audit", 1:3)], tabyl)
+
+
+```
+
+
+Internal reliability of the audit c score - I've used the data from the full sample as the study sample dropped everyone with a score of 0.
+
+```{r AUDIT ALPHA}
+
+# Coerce the columns to numeric
+Study1data$audit1 <- as.numeric(Study1data$audit1)
+Study1data$audit2 <- as.numeric(Study1data$audit2)
+Study1data$audit3 <- as.numeric(Study1data$audit3)
+
+# Extract the relevant columns into a matrix for alpha calculation
+audit_matrix <- Study1data[, c("audit1", "audit2", "audit3")]
+
+# Drop rows with missing values
+audit_matrix_complete <- na.omit(audit_matrix)
+
+# Calculate Cronbach's alpha
+alpha_result <- alpha(audit_matrix_complete)
+
+# View the alpha result
+print(alpha_result)
+
+alpha_value <- alpha_result$alpha
+print(alpha_value)
+
+overall_alpha <- alpha(audit_matrix_complete)
+print(overall_alpha)
+```
+
+Alpha is low, but a 3 item scale is very short so not unacceptable. 
+
+
+*****
+
+## No and Low alcohol consumption 
+
+Use this code to check no outliers. Not to be used for descriptives which provided in separate RMD file. 
+
+
+```{r NoLo Frequency Tables}
+
+# nla1 = frequency of NoLo consumption
+# nla2 = frequency of NoLo hybrid
+# nla3 = frequency ontrade
+# nla4 = frequency off trade
+
+# For these frequencies changing Never back to NA for nla 2-4 so only including Nolo consumers.
+Study1dataC$nla2_CO <- ifelse(Study1dataC$nla2 %in% c("Never"), NA, Study1dataC$nla2)
+Study1dataC$nla3_CO <- ifelse(Study1dataC$nla3 %in% c("Never"), NA, Study1dataC$nla3)                        
+Study1dataC$nla4_CO <- ifelse(Study1dataC$nla4 %in% c("Never"), NA, Study1dataC$nla4)
+
+# Loop to produce tables for NLA-1:4  1- freq NoLo, 2 - hybrid, 3 - ontrade, 4 - offtrade
+lapply(Study1dataC[paste0("nla", 1:4)], tabyl)
+
+# Change NA back to Never for NLA2-4 where NLA 1 = Never
+# Recode nla2 NAs as Never where have reported Never for nla1.
+Study1dataC$nla2 <- ifelse(is.na(Study1dataC$nla2) & Study1dataC$nla1 == "Never", "Never", Study1dataC$nla2)
+
+# Recode nla3 NAs as Never where have reported Never for nla1.
+Study1dataC$nla3 <- ifelse(is.na(Study1dataC$nla3) & Study1dataC$nla1 == "Never", "Never", Study1dataC$nla3)
+
+# Recode nla4 NAs as Never where have reported Never for nla1.
+Study1dataC$nla4 <- ifelse(is.na(Study1dataC$nla4) & Study1dataC$nla1 == "Never", "Never", Study1dataC$nla4)
+
+
+
+```
+
+
+
+```{r Create Binary nolo consumption variables}
+
+# Create binary variables of drinkers who consume NoLo at least monthly 
+
+# 1. Binary variable - NoLo monthly (all settings)
+Study1dataC$nolo_monthly <- Study1dataC$nla1 
+
+# Recode the variable 'nolo_monthly' into two categories: "no" = 0 and "yes" =1 
+Study1dataC$nolo_monthly <- ifelse(Study1dataC$nla1 %in% c("Never", "Once or twice a year", "Once every couple of months"), 0,
+                                       ifelse(Study1dataC$nla1 %in% c("Once or twice a month", "Once or twice a week",
+                                                                          "Three or four days a week", "Five or six days a week",
+                                                                          "Almost every day"), 1, NA))
+
+# Assign value labels
+Study1dataC$nolo_monthly <- factor(Study1dataC$nolo_monthly,
+                                       levels = c("0", "1"),
+                                       labels = c("less than monthly", "at least monthly"))
+
+
+# Create a frequency table for the recoded variable nolo_monthly
+tabyl(Study1dataC$nolo_monthly, sort = TRUE)
+
+
+# 2. Binary variable monthly on trade
+Study1dataC$nolo_ontrade <- Study1dataC$nla3 
+
+# Recode responses to produce binary variable                       
+#Study1dataC$nolo_ontrade <- ifelse(Study1dataC$nla3 %in% c("Never", "Once or twice a year", "Once every couple of months"), 0,
+ #                                      ifelse(Study1dataC$nla3 %in% c("Once or twice a month", "Once or twice a week",
+  #                                                                       "Three or four days a week", "Five or six days a week",
+   #                                                                     "Almost every day"), 1, NA))
+
+Study1dataC$nolo_ontrade <- ifelse(Study1dataC$nla3 %in% c("Never", "1", "2", "3"), 0,
+                                       ifelse(Study1dataC$nla3 %in% c("4", "5",
+                                                                         "6", "7",
+                                                                        "8"), 1, NA))
+                                                                        
+# Assign value labels
+Study1dataC$nolo_ontrade <- factor(Study1dataC$nolo_ontrade,
+                                       levels = c("0", "1"),
+                                       labels = c("less than monthly", "at least monthly"))
+
+
+# Create a frequency table for the nolo ontrade
+tabyl(Study1dataC$nolo_ontrade, sort = TRUE)
+
+# 3. Binary variable monthly off trade
+Study1dataC$nolo_offtrade <- Study1dataC$nla4 
+
+# Recode responses to produce binary variable  
+#Study1dataC$nolo_offtrade <- ifelse(Study1dataC$nla4 %in% c("Never", "Once or twice a year", "Once every couple of months"), 0,
+ #                                      ifelse(Study1dataC$nla4 %in% c("Once or twice a month", "Once or twice a week",
+  #                                                                        "Three or four days a week", "Five or six days a week",
+   #                                                              "Almost every day"), 1, NA))
+
+# Recode nla4 NAs as Never where have reported Never for nla1.
+Study1dataC$nolo_offtrade <- ifelse(is.na(Study1dataC$nla4) & Study1dataC$nla1 == "Never", "0", Study1dataC$nolo_offtrade)
+
+Study1dataC$nolo_offtrade <- ifelse(Study1dataC$nla4 %in% c("Never", "1", "2", "3"), 0,
+                                       ifelse(Study1dataC$nla4 %in% c("4", "5",
+                                                                         "6", "7",
+                                                                        "8"), 1, NA))
+
+# Assign value labels
+Study1dataC$nolo_offtrade <- factor(Study1dataC$nolo_offtrade,
+                                       levels = c("0", "1"),
+                                       labels = c("less than monthly", "at least monthly"))
+
+# Create a frequency table for the recoded variable 
+tabyl(Study1dataC$nolo_offtrade, sort = TRUE)
+
+
+
+```
+
+*****
+
+## Sociodemographic characteristics
+
+### Age
+
+
+```{r Age summary statistics}
+
+# Age summary statistics
+summary(Study1dataC$actage) 
+descr(Study1dataC$actage) 
+
+# Histogram of age
+hist(Study1dataC$actage) #age
+
+# Frequency table age group
+tabyl(Study1dataC$agez, sort = TRUE) 
+
+# Bar chart age group
+ggplot(Study1dataC, aes(x = agez)) + 
+  geom_bar() +
+  xlab("Age group") +
+  ylab("Frequency") +
+  ggtitle("Frequency Plot of Age group")
+
+
+```
+
+
+### Sex
+
+
+
+```{r Sex Frequency table}
+
+# Frequency table sex
+tabyl(Study1dataC$sexz, sort = TRUE) 
+
+
+```
+
+### Social grade
+
+Particpants were classified as belonging to one of 4 social grades: AB, C1, C2, DE. 
+
+```{r Social grade frequency tables + producing 4 level factor}
+
+# Frequency table social group
+tabyl(Study1dataC$sgz, sort = TRUE)
+
+# Create new social grade variable with collapsed categories for E and F
+# Create a new variable that will capture social grade with 4 levels  
+Study1dataC$sg4 <- Study1dataC$sgz 
+
+# Define variable as a factor rather than a numeric variable
+Study1dataC$sg4 <- as.factor(Study1dataC$sg4) 
+
+
+# Reclassifying levels D and E as one level
+Study1dataC$sg4 <- case_when(
+  Study1dataC$sg4 %in% c("AB") ~ "1",
+  Study1dataC$sg4 %in% c("C1") ~ "2",
+  Study1dataC$sg4 %in% c("C2") ~ "3",
+  Study1dataC$sg4 %in% c("D", "E") ~ "4",
+  TRUE ~ as.character(Study1dataC$sg4)
+)
+
+# Assign value labels - This code will only work if the variable is a factor. 
+Study1dataC$sg4 <- factor(Study1dataC$sg4,
+                                       levels = c("1", "2", "3", "4"),
+                                       labels = c("AB", "C1", "C2", "DE"))
+
+# Frequency chart of new social grade variable with 4 levels
+tabyl(Study1dataC$sg4, sort = TRUE) #social group 4 levels
+
+# Bar chart of 4 social grades - will get a warning about non-finite values which are the 131 NA responses. 
+ggplot(Study1dataC, aes(x = sg4)) + 
+  geom_bar() +
+  xlab("Social grade") +
+  ylab("Frequency") +
+  ggtitle("Social grade")
+
+# Create new variable for reverse code SG4
+Study1dataC$sg4R <- Study1dataC$sg4
+
+# Reverse code so aligned with other SES variables
+Study1dataC$sg4R <- case_when(
+  Study1dataC$sg4R %in% c("AB") ~ "4",
+  Study1dataC$sg4R %in% c("C1") ~ "3",
+  Study1dataC$sg4R %in% c("C2") ~ "2",
+  Study1dataC$sg4R %in% c("DE") ~ "1",
+  TRUE ~ as.character(Study1dataC$sg4R)
+)
+
+Study1dataC$sg4R <- factor(Study1dataC$sg4R,
+                                       levels = c("1", "2", "3", "4"),
+                                       labels = c("DE", "C2", "C1", "AB"))
+
+# Frequency chart of new social grade variable with 4 levels - check reverse code has worked
+tabyl(Study1dataC$sg4R, sort = TRUE) #social group 4 levels - reverse coded
+
+```
+
+
+
+## Educational attainment
+
+Responses to the 9 item question regarding educational attainment were amalgamated into a four item response capturing four broad levels of education: 
+1. secondary school/equivalent (including no qualifications)
+2. a-level/equivalent
+3. bachelor degree/equivalent
+4. post-graduate degree/equivalent
+
+
+```{r Education frequency tables + producing 4 level factor}
+
+# Frequency table recording highest qualification/education received
+tabyl(Study1dataC$qual, sort = TRUE) 
+
+# Look at how the different groups look so can decide where to place Other and Still studying
+# Summary statistics for 'actage' split by 'qual' groups
+summary_stats_actage <- Study1dataC %>%
+  group_by(qual) %>%
+  summarise(
+    min_actage = min(actage, na.rm = TRUE),
+    q1_actage = quantile(actage, probs = 0.25, na.rm = TRUE),
+    median_actage = median(actage, na.rm = TRUE),
+    mean_actage = mean(actage, na.rm = TRUE),
+    q3_actage = quantile(actage, probs = 0.75, na.rm = TRUE),
+    max_actage = max(actage, na.rm = TRUE)
+  )
+
+print(summary_stats_actage)
+
+# Frequency and percentage of each level split by 'qual' groups
+frequency_table_sgz <- Study1dataC %>%
+  group_by(qual, sgz) %>%
+  summarise(freq = n()) %>%
+  mutate(percentage = freq / sum(freq) * 100)
+
+print(frequency_table_sgz)
+
+# Percentage of males split by 'qual' groups
+percentage_male <- Study1dataC %>%
+  group_by(qual) %>%
+  summarise(percentage_male = mean(sexz == "Men", na.rm = TRUE) * 100)
+
+print(percentage_male)
+
+# Summary statistics for 'audit' split by 'qual' groups
+summary_stats_audit <- Study1dataC %>%
+  group_by(qual) %>%
+  summarise(
+    min_audit = min(auditc, na.rm = TRUE),
+    q1_audit = quantile(auditc, probs = 0.25, na.rm = TRUE),
+    median_audit = median(auditc, na.rm = TRUE),
+    mean_audit = mean(auditc, na.rm = TRUE),
+    q3_audit = quantile(auditc, probs = 0.75, na.rm = TRUE),
+    max_audit = max(auditc, na.rm = TRUE)
+  )
+
+print(summary_stats_audit)
+
+
+# Create a new variables with collapsed categories for education/qualifications
+# Create a new variable  for education with 4 levels
+Study1dataC$ed4 <- Study1dataC$qual 
+# Define as a factor rather than a numeric variable
+Study1dataC$ed4 <- as.factor(Study1dataC$ed4) 
+
+# Reclassifying qualifications/education as 4 levels - secondary school/equiv (inc no qualifications), further education (A Levels + equivalents), higher education (Degrees + equiv), post-grad ed (Masters / PhD + equiv)
+Study1dataC$ed4 <- case_when(
+  Study1dataC$ed4 %in% c("GCSE/O-LEVEL/CSE", "VOCATIONAL QUALIFICATIONS (=NVQ1+2)", "NO FORMAL QUALIFICATIONS") ~ "1",
+  Study1dataC$ed4 %in% c("A-LEVEL OR EQUIVALENT (=NVQ3)" , "OTHER", "DON'T KNOW", "STILL STUDYING") ~ "2",
+  Study1dataC$ed4 %in% c("BACHELOR DEGREE OR EQUIVALENT (=NVQ4)") ~ "3",
+  Study1dataC$ed4 %in% c("MASTERS/PHD OR EQUIVALENT") ~ "4",
+  TRUE ~ NA
+)
+
+# 
+
+# Assign value labels
+Study1dataC$ed4 <- factor(Study1dataC$ed4,
+                                       levels = c("1", "2", "3", "4"),
+                                       labels = c("Secondary School/equiv", "Further Ed/equiv", "Higher Ed/equiv", "Post-grad/equiv"))
+
+# Frequency table recording highest qualification/education received
+tabyl(Study1dataC$ed4, sort = TRUE) 
+
+freq_Education <- Study1dataC %>%
+  count(ed4, .drop = FALSE)
+
+print(freq_Education)
+
+# Bar chart of 4 education levels 
+ggplot(Study1dataC, aes(x = ed4)) + 
+  geom_bar() +
+  xlab("Education") +
+  ylab("Frequency") +
+  ggtitle("Education")
+
+
+```
+
+
+## Indices of multiple deprivation
+
+Data was missing for 14.3% of respondents (n=418). 
+
+```{r IMD Frequency tables}
+
+# Frequency table for IMD
+tabyl(Study1dataC$imd_quintile, sort = TRUE) #1 is most deprived 5 is least deprived
+
+
+# Bar chart for IMD
+ggplot(Study1dataC, aes(x = imd_quintile)) + 
+  geom_bar() +
+  xlab("IMD") +
+  ylab("Frequency") +
+  ggtitle("Indices of Multiple Deprivation")
+
+
+```
+
+
+
+There was a reasonable spread of respondents living in rural to urban locations. 
+
+## Ethnicity
+
+90.1% respondents were white (n=2722). No plans to include in analysis due to small numbers of non-white respondents. Less than 1% missing.
+
+```{r ethnicity tables}
+
+# Full list of ethnicities table
+tabyl(Study1dataC$ethnic, sort = TRUE) 
+
+# Create a data frame from the frequency table
+ethnicity <- tabyl(Study1dataC$ethnic, sort = TRUE)
+
+summary_df <- as.data.frame(ethnicity)
+
+# Export the correlation matrix to an Excel file
+write_xlsx(summary_df, path = "SET PATHWAY - ethnicity.xlsx")
+
+
+# Binary variable for white ethnicity
+tabyl(Study1dataC$dethnin, sort = TRUE) 
+
+
+```
+
+*****
+
+# Drinking motives
+
+The tables below report the number of responses for each response level in the 5 DMQ items.
+
+1.Enhancement
+2.Social
+3.Conformity
+4.Depression
+5.Anxiety
+
+A number of respondents responded that they 'did not know' whether they drank for a particular motive. This ranged from n=41 (depression) to n=78 (conformity). Whilst not an option in the DMQ - Ipsos have responded to say they always provide this option to respondents. Consequently new 5L variables have been created recoding 'Don't knows' as NA for the CCA. For each variable they are approximately 1-2% DK. 
+
+Further analysis will explore how similar the 'Don't knows' look like 'NAs' to decide whether they can be treated as NAs for multiple imputation or if these cases should be excluded. Currently, MI will **not** be undertaken on these variables, but the original DM variables to avoid recoding 'Don't knows' with one of the 5 factors. 
+
+```{r drinking motives frequency tables and bar charts}
+
+# Loop to produce a frequency table for DM 1 - 5
+lapply(Study1dataC[paste0("naq1_0", 1:5)], tabyl)
+
+```
+
+
+The code below converts agez into dummy variables
+
+```{r Create dummy variables for agez categories}
+
+
+
+# Convert 'agez' into dummy variables 
+dummy_variables <- model.matrix(~ agez - 1, data = Study1dataC)
+
+# Get the column names of the dummy variables
+age_groups <- colnames(dummy_variables)
+
+# Create a frequency table for each age group
+for (age_group in age_groups) {
+  freq_table <- table(dummy_variables[, age_group])
+  print(paste("Frequency table for", age_group))
+  print(freq_table)
+}
+
+Study1dataC <- cbind(Study1dataC, dummy_variables)
+
+
+
+```
+
+
+The creation of 5L factors treats all DK responses as NA. ## These cases are deleted prior to MI. ##
+
+```{r Create 5L DM factors}
+
+#define the DM variables as numeric variables
+Study1dataC$enh5L <- as.factor(Study1dataC$naq1_01)
+Study1dataC$soc5L <- as.factor(Study1dataC$naq1_02)
+Study1dataC$con5L <- as.factor(Study1dataC$naq1_03)
+Study1dataC$dep5L <- as.factor(Study1dataC$naq1_04)
+Study1dataC$anx5L <- as.factor(Study1dataC$naq1_05)
+
+# Replace 6 with NA in the new variables
+Study1dataC$enh5L[Study1dataC$enh5L == "Don't know"] <- NA
+
+Study1dataC$soc5L[Study1dataC$soc5L == "Don't know"] <- NA
+
+Study1dataC$con5L[Study1dataC$con5L == "Don't know"] <- NA
+
+Study1dataC$dep5L[Study1dataC$dep5L == "Don't know"] <- NA
+
+Study1dataC$anx5L[Study1dataC$anx5L == "Don't know"] <- NA
+
+
+
+```
+
+
+
+
+
+```{r Create Binary DM variables}
+
+# Create binary variables for the DM who less than half the time, at least half the time
+
+
+########################### 1. Binary variable - ENH ###########################
+
+Study1dataC$enhBIN <- Study1dataC$enh5L 
+
+# Recode the variable 'nolo_monthly' into two categories: "less than half the time" = 0 and "at least half the time" =1 
+Study1dataC$enhBIN <- ifelse(Study1dataC$enhBIN %in% c("Almost never/never", "Some of the time"), 0,
+                                       ifelse(Study1dataC$enhBIN %in% c("Half of the time", "Most of the time",
+                                                                          "Almost always/always"), 1, NA))
+
+
+# Assign value labels
+Study1dataC$enhBIN <- factor(Study1dataC$enhBIN,
+                                       levels = c("0", "1"),
+                                       labels = c("less than half the time", "at least half the time"))
+
+
+# Create a frequency table for the recoded variable enhBIN
+tabyl(Study1dataC$enhBIN, sort = TRUE)
+
+
+
+########################### 2. Binary variable - DEP ###########################
+
+Study1dataC$depBIN <- Study1dataC$dep5L 
+
+# Recode the variable 'nolo_monthly' into two categories: "less than half the time" = 0 and "at least half the time" =1 
+Study1dataC$depBIN <- ifelse(Study1dataC$depBIN %in% c("Almost never/never", "Some of the time"), 0,
+                                       ifelse(Study1dataC$depBIN %in% c("Half of the time", "Most of the time",
+                                                                          "Almost always/always"), 1, NA))
+
+
+# Assign value labels
+Study1dataC$depBIN <- factor(Study1dataC$depBIN,
+                                       levels = c("0", "1"),
+                                       labels = c("less than half the time", "at least half the time"))
+
+
+# Create a frequency table for the recoded variable depBIN
+tabyl(Study1dataC$depBIN, sort = TRUE)
+
+########################### 3. Binary variable - ANX ###########################
+
+Study1dataC$anxBIN <- Study1dataC$anx5L 
+
+# Recode the variable 'nolo_monthly' into two categories: "less than half the time" = 0 and "at least half the time" =1 
+Study1dataC$anxBIN <- ifelse(Study1dataC$anxBIN %in% c("Almost never/never", "Some of the time"), 0,
+                                       ifelse(Study1dataC$anxBIN %in% c("Half of the time", "Most of the time",
+                                                                          "Almost always/always"), 1, NA))
+
+
+# Assign value labels
+Study1dataC$anxBIN <- factor(Study1dataC$anxBIN,
+                                       levels = c("0", "1"),
+                                       labels = c("less than half the time", "at least half the time"))
+
+
+# Create a frequency table for the recoded variable anxBIN
+tabyl(Study1dataC$anxBIN, sort = TRUE)
+
+
+########################### 4. Binary variable - SOC ###########################
+
+Study1dataC$socBIN <- Study1dataC$soc5L 
+
+# Recode the variable 'nolo_monthly' into two categories: "less than half the time" = 0 and "at least half the time" =1 
+Study1dataC$socBIN <- ifelse(Study1dataC$socBIN %in% c("Almost never/never", "Some of the time"), 0,
+                                       ifelse(Study1dataC$socBIN %in% c("Half of the time", "Most of the time",
+                                                                          "Almost always/always"), 1, NA))
+
+
+# Assign value labels
+Study1dataC$socBIN <- factor(Study1dataC$socBIN,
+                                       levels = c("0", "1"),
+                                       labels = c("less than half the time", "at least half the time"))
+
+
+# Create a frequency table for the recoded variable socBIN
+tabyl(Study1dataC$socBIN, sort = TRUE)
+
+########################### 5. Binary variable - CON ###########################
+
+Study1dataC$conBIN <- Study1dataC$con5L 
+
+# Recode the variable 'nolo_monthly' into two categories: "less than half the time" = 0 and "at least half the time" =1 
+Study1dataC$conBIN <- ifelse(Study1dataC$conBIN %in% c("Almost never/never", "Some of the time"), 0,
+                                       ifelse(Study1dataC$conBIN %in% c("Half of the time", "Most of the time",
+                                                                          "Almost always/always"), 1, NA))
+
+
+# Assign value labels
+Study1dataC$conBIN <- factor(Study1dataC$conBIN,
+                                       levels = c("0", "1"),
+                                       labels = c("less than half the time", "at least half the time"))
+
+
+# Create a frequency table for the recoded variable socBIN
+tabyl(Study1dataC$conBIN, sort = TRUE)
+
+```
+
+# Other sociodemographic variables not used in the analysis but included in the MI
+
+Housing tenure
+
+```{r Housing tensure frequency tables}
+
+# Frequency table for home ownership
+tabyl(Study1dataC$tenure, sort = TRUE) #
+
+
+# Bar chart for housing tenure
+ggplot(Study1dataC, aes(x = imd_quintile)) + 
+  geom_bar() +
+  xlab("Housing tenure") +
+  ylab("Frequency") +
+  ggtitle("Housing tenure")
+
+
+# create binary variable for tenure (based on Beard et al 2019 paper on SES composite measure)
+
+# 1. Binary variable - Housing tenure
+Study1dataC$home_owner <- Study1dataC$tenure
+
+
+
+
+Study1dataC$home_owner <- ifelse(Study1dataC$tenure %in% c("BEING BOUGHT ON A MORTGAGE", "OWNED OUTRIGHT BY HOUSEHOLD"), 1,
+                                 ifelse(Study1dataC$tenure %in% c("RENTED FROM LOCAL AUTHORITY", "RENTED FROM A PRIVATE LANDLORD",
+                                                                    "BELONGS TO HOUSING ASSOCIATION", "OTHER",
+                                                                    "REFUSED"), 0, NA))
+
+Study1dataC$home_owner <- factor(Study1dataC$home_owner,
+                                 levels = c(0, 1),
+                                 labels = c("Not a home owner", "Home owner"))
+
+# Create a frequency table for the recoded variable home_owner
+tabyl(Study1dataC$home_owner, sort = TRUE)
+
+```
+
+
+Employment Status
+
+
+
+
+## Employment status
+
+Employment status was classified into 6 responses including:
+1. Employed fulltime
+2. Employed parttime
+3. Self-employed
+4. Full time student (including still at school)
+5. Not working
+6. Retired
+
+Two thirds of respondents were in in paid employment (41.7% FT employees, 9.4% PT employees and 10.3% self-employed). Over one-quarter (26.7%) were retired.
+
+```{r Employment status frequency table and producing a 6 level factor}
+
+# Frequency chart of working status of respondents
+tabyl(Study1dataC$work, sort = TRUE) #working status
+
+# Create new variables with collapsed employment categories for analysis
+# create a new variable 
+Study1dataC$emp <- Study1dataC$work  
+# Define as a factor rather than a numeric variable
+Study1dataC$emp <- as.factor(Study1dataC$emp) 
+
+# Provide new factor levels for employment variables
+Study1dataC$emp <- case_when(
+  Study1dataC$emp %in% c("HAVE PAID JOB - FULL TIME (30+ HOURS PER WEEK)") ~ "1",
+  Study1dataC$emp %in% c("HAVE PAID JOB - PART TIME (8-29 HOURS PER WEEK)", "HAVE PAID JOB - PART TIME (UNDER 8 HOURS PER WEEK)") ~ "2",
+  Study1dataC$emp %in% c("SELF-EMPLOYED") ~ "3",
+  Study1dataC$emp %in% c("FULL TIME STUDENT", "STILL AT SCHOOL") ~ "4",
+  Study1dataC$emp %in% c("UNEMPLOYED AND SEEKING WORK", "NOT IN PAID WORK FOR OTHER REASON", "NOT IN PAID WORK BECAUSE OF LONG TERM ILLNESS OR DISABILITY", "NOT WORKING - HOUSEWIFE" ) ~ "5",
+  Study1dataC$emp %in% c("RETIRED") ~ "6",
+   TRUE ~ NA
+)
+
+# Assign value labels 
+Study1dataC$emp <- factor(Study1dataC$emp,
+                                       levels = c("1", "2", "3", "4", "5", "6"),
+                                       labels = c("Full-time", "Part-time", "Self-employed", "Student", "Not currently in employment", "Retired"))
+
+
+# Frequency chart of updated employment categories of respondents
+tabyl(Study1dataC$emp, sort = TRUE) #working status
+
+# Bar chart of employment
+ggplot(Study1dataC, aes(x = emp)) + 
+  geom_bar() +
+  xlab("Employment") +
+  ylab("Frequency") +
+  ggtitle("Employment status")
+
+
+# Create a data frame from the frequency table
+emp_status <- tabyl(Study1dataC$emp, sort = TRUE)
+
+summary_df <- as.data.frame(emp_status)
+
+# Export the df to an Excel file
+# write_xlsx(summary_df, path = "X:/HAR_SP/SP/STU_cmq21lcs/Impact of no and low alcohol/Behavioural model - Study 1/Analysis/emp_status.xlsx")
+
+# create binary variable for full time employment (based on Beard et al 2019 paper on SES composite measure)
+
+# 1. Binary variable - Full time employment
+Study1dataC$ft_emp <- Study1dataC$emp
+
+# Recode the new employment variable into two categories: "no" = 0 and "yes" =1 (following precedent set in Beard 2019 paper)
+Study1dataC$ft_emp <- ifelse(Study1dataC$ft_emp %in% c("Full-time"), 1,
+                                       ifelse(Study1dataC$ft_emp %in% c("Part-time", "Self-employed",
+                                                                          "Student", "Not currently in employment",
+                                                                          "Retired"), 0, NA))
+
+# Assign value labels
+Study1dataC$ft_emp <- factor(Study1dataC$ft_emp,
+                                       levels = c("0", "1"),
+                                       labels = c("Not in FT employment", "In FT employment"))
+
+
+# Create a frequency table for the recoded variable ft_emp
+tabyl(Study1dataC$ft_emp, sort = TRUE)
+
+
+```
+
+
+
+Region and Rurality
+
+
+
+
+
+## Regions of residence and levels of rurality
+
+For the analysis the 11 government office regions were collapsed into 6, however, this may need revisiting as it has led to very uneven group sizes.
+
+*Query*
+SARG is leaving these as 11 levels. What should I do? 
+
+
+```{r Regions + rurality frequency tables + collapsing regions}
+
+tabyl(Study1dataC$gor, sort = TRUE) #region
+
+tabyl(Study1dataC$urban, sort = TRUE) #urban or rural residence
+
+
+# Create new variables with collapsed region categories for analysis
+# create a new variable 
+Study1dataC$region <- Study1dataC$gor  
+# Define as a factor rather than a numeric variable
+Study1dataC$region <- as.factor(Study1dataC$region) 
+
+# Provide new factor levels for employment variables
+Study1dataC$region <- case_when(
+  Study1dataC$region %in% c("LONDON", "SOUTH EAST", "EASTERN" ) ~ "1",
+  Study1dataC$region %in% c("NORTH EAST", "NORTH WEST", "YORKS AND HUMBR") ~ "2",
+  Study1dataC$region %in% c("SOUTH WEST") ~ "3",
+  Study1dataC$region %in% c("EAST MIDLANDS", "WEST MIDLANDS") ~ "4",
+  Study1dataC$region %in% c("SCOTLAND" ) ~ "5",
+  Study1dataC$region %in% c("WALES") ~ "6",
+   TRUE ~ NA
+)
+
+# Assign value labels 
+Study1dataC$region <- factor(Study1dataC$region,
+                                       levels = c("1", "2", "3", "4", "5", "6"),
+                                       labels = c("London & SE", "North", "South-West", "Midlands", "Scotland", "Wales"))
+
+
+# Frequency chart of updated region categories of respondents
+tabyl(Study1dataC$region, sort = TRUE) 
+
+# Create a data frame from the frequency table
+region <- tabyl(Study1dataC$region, sort = TRUE)
+
+summary_df <- as.data.frame(region)
+
+# Export the correlation matrix to an Excel file
+write_xlsx(summary_df, path = "SET PATHWAY - region_residence.xlsx")
+
+
+```
+
+
+
+SAVE THE DATAFILE 
+
+
+ 
+```{r Save clean data file}
+
+# Save the cleaned data to an RDS file
+saveRDS(Study1dataC, "SET PATHWAY - cleaned_data.rds")
+
+```
+
+
+However, ended up proceeding with MI so have commented out this code.
+
+
+
+# Replace missing sg4R with C1 - would use if not using MI
+
+```{r Replace SG NA with C1}
+
+# # # Check frequencies in original dataset
+# # freq_table <- Study1dataC %>%
+#   count(sgz, .drop = FALSE)
+# 
+# # print(freq_table)
+# 
+# # 123 which corresponds with n missing from subset above.
+# 
+# # Create new datafile in which C1 is used to replace missing sg items
+# # Study1data_C1 <- Study1dataC
+# # Replace NA in 'sgz' column with 'C1'
+# Study1data_C1$sgz[is.na(Study1dataC$sgz)] <- "C1"
+# 
+# # Check frequencies in updated dataset
+# freq_table2 <- Study1data_C1 %>%
+#   count(sgz, .drop = FALSE)
+# 
+# print(freq_table2)
+# 
+# # Save the cleaned data to an RDS file
+# # saveRDS(Study1data_C1, "X:/HAR_SP/SP/STU_cmq21lcs/Impact of no and low alcohol/Behavioural model - Study  
+# # 1/Data/cleaned_data_with_NA_sg_C1.rds")
+
+
+```
+

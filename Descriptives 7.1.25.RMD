@@ -1,0 +1,813 @@
+---
+title: "Descriptives March 2024"
+author: "LB"
+date: "06/03/2024"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 100
+---
+
+```{r setup, include=FALSE}
+
+# Display code chunks
+knitr::opts_chunk$set(echo = TRUE)
+
+# Centre align all plots as default
+knitr::opts_chunk$set(fig.align = 'center')
+
+# Set working directory for code (this should apply to full file unless specified otherwise)
+# knitr::opts_knit$set(root.dir = "SET YOUR WD") 
+
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and
+MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well
+as the output of any embedded R code chunks within the document. You can embed an R code chunk like
+this:
+
+```{r load R libraries, include = FALSE}
+
+# Above code prevents any error messages/ masked functions arising from this code chunk etc from displaying in the knitted document.
+
+# Identify packages required, but not yet installed and install them. 
+
+# 1. check whether required packages are already installed 
+packages <- c("tidyverse", "foreign", "janitor", "sjmisc", "readr", "tidymodels", "finalfit", "haven", "ggplot2", "gtools", "dplyr", "mice", "ordinal", "knitr", "rmarkdown", "broom", "lmtest", "writexl", "miceadds")  
+
+
+# 2. identify which packages have not yet been installed     
+new_packages <- packages[!(packages %in% installed.packages()[ ,"Package"])]
+
+# 3. install any new packages
+if(length(new_packages)) {
+  install.packages(new_packages)
+}
+
+# Read in required libraries
+library(tidyverse)
+library(foreign) # this package is required to read in SPSS files
+library(dplyr) #this needs to be loaded after plyr. 
+library(janitor) # used for summary statistics
+library(sjmisc) # used for recoding into a new variable with label names
+library(readr)
+library(tidymodels)
+library(finalfit) #use this package when working with missing data
+library(ggplot2) #for plotting graphs
+library(haven) #use to assign variable and value labels
+library(psych)
+library(mice) #multiple imputation using chained equations
+library(knitr) #used so that can set up equivalent of a wd in markdown where data saved elsewhere to script (Haven't used this in the end)
+library(rmarkdown) #used in the next Markdown doc to run this document and render it
+library(writexl) # used to convert correlation matrix into excel spreadsheet for formatting into a table  
+library(miceadds) #adds CI to pooled results from MI 
+
+```
+
+```{r Read in Clean dataset}
+
+# Load the cleaned data from the RDS file
+# Use this file when computing descriptives that do not have missing data as no need to pool responses
+# Clean_data <- readRDS("FILE PATHWAY - Clean_data_no_imputes.rds") # This is the datafile prior to imputation. DM = Don't know and sex = In anoth way have been dropped.
+# N=2555
+
+# Load MI data as need this for the variables with missing data
+# MIA_data <- readRDS("FILE PATHWAY - Imputed_data_Study1_12_nov.rds")
+```
+
+Remember to find and replace with Clean_data
+
+```{r AUDIT}
+
+# Frequency tables for the audit c items
+lapply(Clean_data[paste0("audit", 1:3)], tabyl)
+
+describe(Clean_data$auditc)
+
+# Calculate mean and SD
+mean_value <- mean(Clean_data$auditc)
+sd_value <- sd(Clean_data$auditc)
+
+# Calculate 95% confidence interval
+
+n <- length(Clean_data$auditc)
+se <- sd(Clean_data$auditc) / sqrt(n)
+margin_of_error <- qt(0.975, df = n - 1) * se
+lower_ci <- mean_value - margin_of_error
+upper_ci <- mean_value + margin_of_error
+
+# Print the results
+cat("Mean:", mean_value, "\n")
+cat("SD:", sd_value, "\n")
+cat("95% CI:", lower_ci, "-", upper_ci, "\n")
+
+# Classify drinking levels from audit by creating a new variable and then recoding values within that variable
+# Create a new variable in the drinkers datafile defining as a factor rather than a numeric variable as this will be an ordinal variable
+Clean_data$audit_class <- Clean_data$auditc 
+Clean_data$audit_class <- as.factor(Clean_data$audit_class) 
+
+# Recode into the new variable the raw scores from the AUDIT C to denote the risk classifications
+Clean_data$audit_class <- case_when(
+  Clean_data$audit_class %in% c("0", "1", "2", "3", "4") ~ "1",
+  Clean_data$audit_class %in% c("5", "6", "7") ~ "2",
+  Clean_data$audit_class %in% c("8", "9", "10") ~ "3",
+  Clean_data$audit_class %in% c("11", "12") ~ "4",
+  TRUE ~ as.character(Clean_data$audit_class)
+)
+
+# Assign value labels for the risk levels
+Clean_data$audit_class <- factor(Clean_data$audit_class,
+                                       levels = c("1", "2", "3", "4"),
+                                       labels = c("low risk", "increasing risk", "higher risk", "possible dependence"))
+
+# Frequency table of new variable
+frq(Clean_data$audit_class)
+
+```
+
+### Audit C risk classifications
+
+
+```{r Weighted audit descriptives}
+
+library(survey)
+## USE THIS CODE FOR ALL THE WEIGHTED DESCRIPTIVES ###
+
+# Define survey design object with weights
+survey_design <- svydesign(ids = ~1, data = Clean_data, weights = ~weight_gb)
+
+
+
+# Calculate weighted mean for auditc
+weighted_mean <- svymean(~auditc, survey_design, na.rm = TRUE)
+print(weighted_mean)
+
+# Calculate weighted variance (this is the sum of squared deviations)
+weighted_variance <- svyvar(~auditc, survey_design, na.rm = TRUE)
+print(weighted_variance)
+
+# Weighted Standard Deviation is the square root of the variance
+weighted_sd_value <- sqrt(weighted_variance)
+print(weighted_sd_value)
+
+# Extract the mean and SE from the result
+mean_value <- weighted_mean[1]
+se_value <- weighted_mean[2]
+
+# Calculate the 95% CI manually
+ci_lower <- weighted_mean - (1.96 * 0.0566) # had to manually input se value to get code to work
+ci_upper <- weighted_mean + (1.96 * 0.0566)
+
+# Print the CI
+cat("95% CI for the weighted mean: ", ci_lower, "to", ci_upper, "\n")
+
+
+
+# frequency table of risk classifications
+
+# Create a weighted frequency table for the audit_class variable
+weighted_freq <- svytotal(~audit_class, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_freq)
+```
+
+
+
+
+
+
+```{r AUDIT Internal Consistency}
+
+# Read in data
+# Load the datafile which has respondents who don't drink alcohol included (scored 0) from the RDS file
+Data_audit_alpha <- readRDS("X:/HAR_SP/SP/STU_cmq21lcs/Impact of no and low alcohol/Behavioural model - Study 1/Data/Audit_alpha.rds")
+
+# Coerce the columns to numeric
+Data_audit_alpha$audit1 <- as.numeric(Data_audit_alpha$audit1)
+Data_audit_alpha$audit2 <- as.numeric(Data_audit_alpha$audit2)
+Data_audit_alpha$audit3 <- as.numeric(Data_audit_alpha$audit3)
+
+# Extract the relevant columns into a matrix for alpha calculation
+audit_matrix <-Data_audit_alpha[, c("audit1", "audit2", "audit3")]
+
+# Drop rows with missing values
+audit_matrix_complete <- na.omit(audit_matrix)
+
+# Calculate Cronbach's alpha
+alpha_result <- alpha(audit_matrix_complete)
+
+# View the alpha result
+print(alpha_result)
+
+alpha_value <- alpha_result$alpha
+print(alpha_value)
+
+overall_alpha <- alpha(audit_matrix_complete)
+print(overall_alpha)
+
+```
+
+I think a lot of this code is redundant as I think I've copied across and edited to either use the
+pooled data or the complete data. Don't want to touch it right now, but could do with being checked
+and removed at a later date.
+
+----------------------------------------------------------------------------------------------------
+
+## Patterns of No and Low alcohol consumption
+
+
+```{r NoLo Frequency Tables}
+
+# nla1 = frequency of NoLo consumption
+# nla2 = frequency of NoLo hybrid
+# nla3 = frequency ontrade
+# nla4 = frequency off trade
+
+# For these frequencies changing Never back to NA for nla 2-4  CO Nolo consumers only
+Clean_data$nla2_CO <- ifelse(Clean_data$nla2 %in% c("Never"), NA, Clean_data$nla2)
+Clean_data$nla3_CO <- ifelse(Clean_data$nla3 %in% c("Never"), NA, Clean_data$nla3)                        
+Clean_data$nla4_CO <- ifelse(Clean_data$nla4 %in% c("Never"), NA, Clean_data$nla4)
+
+# Loop to produce tables for NLA-1:4  1- freq NoLo, 2 - hybrid, 3 - ontrade, 4 - offtrade
+lapply(Clean_data[paste0("nla", 1:4)], tabyl)
+
+# Change NA back to Never for NLA2-4 where NLA 1 = Never
+# Recode nla2 NAs as Never where have reported Never for nla1.
+Clean_data$nla2 <- ifelse(is.na(Clean_data$nla2) & Clean_data$nla1 == "Never", "Never", Clean_data$nla2)
+
+# Recode nla3 NAs as Never where have reported Never for nla1.
+Clean_data$nla3 <- ifelse(is.na(Clean_data$nla3) & Clean_data$nla1 == "Never", "Never", Clean_data$nla3)
+
+# Recode nla4 NAs as Never where have reported Never for nla1.
+Clean_data$nla4 <- ifelse(is.na(Clean_data$nla4) & Clean_data$nla1 == "Never", "Never", Clean_data$nla4)
+
+
+
+```
+
+
+```{r Weighted nolo monthly variable}
+
+
+# Calculate the weighted frequency for 'nolo_monthly'
+weighted_freq <- svytotal(~nolo_monthly, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_freq)
+
+# View as a proportion or in percentage form:
+weighted_freq_percent <- weighted_freq / sum(weighted_freq) * 100
+print(weighted_freq_percent)
+
+
+```
+
+----------------------------------------------------------------------------------------------------
+
+## Sociodemographic characteristics
+
+### Age
+
+
+```{r Age summary statistics}
+
+# Frequency table sex
+tabyl(Clean_data$agez, sort = TRUE) 
+
+# Using agez rather than act age as no missing data for this variable
+
+```
+
+
+
+
+```{r weighted age summary statistics}
+
+# Calculate the weighted frequency for 'nolo_offtrade'
+weighted_agez <- svytotal(~agez, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_agez)
+
+# proportion or in percentage form:
+weighted_age_percent <- weighted_agez / sum(weighted_agez) * 100
+print(weighted_age_percent)
+
+
+
+
+```
+
+
+
+### Sex
+
+
+```{r Sex Frequency table}
+
+# Frequency table sex - non-imputed data
+tabyl(Clean_data$sexz, sort = TRUE) 
+
+
+# Using mice to produce pooled frequency table
+
+# List to store frequency tables from each imputed dataset
+frequency_tables <- vector("list", length = 18)
+
+# Loop through imputations
+for (imp_index in 1:18) {
+  # Extract the "sexz" variable from the imputed dataset
+  sexz_variable <- with(complete(MIA_data, imp_index), sexz)
+
+  # Create a frequency table for each imputed dataset
+  frequency_tables[[imp_index]] <- table(sexz_variable)
+}
+
+# Combine or average the frequency tables across imputations as needed
+combined_frequency_table <- Reduce(`+`, frequency_tables) / length(frequency_tables)
+
+# Display the combined frequency table
+print(combined_frequency_table)
+
+
+```
+
+
+
+```{r Weighted sex variable}
+
+
+# Need to use pooled data
+
+library(mice)
+library(survey)
+
+# List to store weighted frequency tables from each imputed dataset
+weighted_frequency_tables <- vector("list", length = 18)
+
+# Loop through imputations
+for (imp_index in 1:18) {
+  # Extract the completed dataset for the current imputation
+  completed_data <- complete(MIA_data, imp_index)
+  
+  # Define the survey design object for the current imputed dataset
+  survey_design <- svydesign(ids = ~1, data = completed_data, weights = ~weight_gb)
+  
+  # Calculate the weighted frequency table for 'sexz'
+  weighted_frequency_tables[[imp_index]] <- svytotal(~sexz, survey_design, na.rm = TRUE)
+}
+
+# Combine the weighted frequency tables across imputations
+# Use Reduce to sum the weighted frequencies and then divide by the number of imputations for pooling
+pooled_weighted_frequencies <- Reduce(`+`, weighted_frequency_tables) / length(weighted_frequency_tables)
+
+# Display the pooled weighted frequency table
+print(pooled_weighted_frequencies)
+
+# convert the frequencies to percentages
+total_weighted_count <- sum(pooled_weighted_frequencies)
+pooled_weighted_percentages <- pooled_weighted_frequencies / total_weighted_count * 100
+
+# Print the percentages
+print(pooled_weighted_percentages)
+
+
+```
+
+
+
+
+### Social grade
+
+Participants were classified as belonging to one of 4 social grades: AB, C1, C2, DE. 
+
+```{r Social grade frequency tables + producing 4 level factor}
+
+
+# List to store frequency tables from each imputed dataset
+frequency_tables <- vector("list", length = 18)
+
+# Loop through imputations
+for (imp_index in 1:18) {
+  # Extract the "sexz" variable from the imputed dataset
+  sg4_variable <- with(complete(MIA_data, imp_index), sg4R)
+
+  # Create a frequency table for each imputed dataset
+  frequency_tables[[imp_index]] <- table(sg4_variable)
+}
+
+# Combine or average the frequency tables across imputations as needed
+combined_frequency_table <- Reduce(`+`, frequency_tables) / length(frequency_tables)
+
+# Display the combined frequency table
+print(combined_frequency_table)
+
+```
+
+
+```{r Weighted social grade}
+
+# List to store weighted frequency tables from each imputed dataset
+weighted_frequency_tables <- vector("list", length = 18)
+
+# Loop through imputations
+for (imp_index in 1:18) {
+  # Extract the completed dataset for the current imputation
+  completed_data <- complete(MIA_data, imp_index)
+  
+  # Define the survey design object for the current imputed dataset
+  survey_design <- svydesign(ids = ~1, data = completed_data, weights = ~weight_gb)
+  
+  # Calculate the weighted frequency table for 'sg4R'
+  weighted_frequency_tables[[imp_index]] <- svytotal(~sg4R, survey_design, na.rm = TRUE)
+}
+
+# Combine the weighted frequency tables across imputations
+# Use Reduce to sum the weighted frequencies and then divide by the number of imputations for pooling
+pooled_weighted_frequencies <- Reduce(`+`, weighted_frequency_tables) / length(weighted_frequency_tables)
+
+# Display the pooled weighted frequency table
+print(pooled_weighted_frequencies)
+
+# convert the frequencies to percentages
+total_weighted_count <- sum(pooled_weighted_frequencies)
+pooled_weighted_percentages <- pooled_weighted_frequencies / total_weighted_count * 100
+
+# Print the percentages
+print(pooled_weighted_percentages)
+
+
+
+```
+
+
+
+
+## Educational attainment
+
+Responses to the 9 item question regarding educational attainment were amalgamated into a four item
+response capturing four broad levels of education: 1. secondary school/equivalent (including no
+qualifications) 2. a-level/equivalent 3. bachelor degree/equivalent 4. post-graduate
+degree/equivalent
+
+
+```{r Education frequency tables + producing 4 level factor}
+
+# Frequency table recording highest qualification/education received
+tabyl(Clean_data$ed4, sort = TRUE) 
+
+
+```
+
+
+
+```{r Weighted Education}
+
+# Calculate the weighted frequency for 'nolo_offtrade'
+weighted_ed4 <- svytotal(~ed4, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_ed4)
+
+
+# proportion or in percentage form:
+weighted_ed_percent <- weighted_ed4 / sum(weighted_ed4) * 100
+print(weighted_ed_percent)
+
+
+
+
+```
+
+
+
+
+## Indices of multiple deprivation
+
+
+```{r IMD Frequency tables}
+
+# List to store frequency tables from each imputed dataset
+frequency_tables <- vector("list", length = 18)
+
+# Loop through imputations
+for (imp_index in 1:18) {
+  # Extract the "imd_quintile" variable from the imputed dataset
+  imd_variable <- with(complete(MIA_data, imp_index), imd_quintile)
+
+  # Create a frequency table for each imputed dataset
+  frequency_tables[[imp_index]] <- table(imd_variable)
+}
+
+# Combine or average the frequency tables across imputations as needed
+combined_frequency_table <- Reduce(`+`, frequency_tables) / length(frequency_tables)
+
+# Display the combined frequency table
+print(combined_frequency_table)
+
+
+```
+
+
+
+
+```{r Weighted IMD}
+
+# List to store weighted frequency tables from each imputed dataset
+weighted_frequency_tables <- vector("list", length = 18)
+
+# Define explicit breaks for binning (1 to 5 if imd_quintile has these levels)
+breaks <- seq(0.5, 5.5, by = 1) # Covers 1, 2, 3, 4, 5 as separate bins
+
+# Loop through imputations
+for (imp_index in 1:18) {
+  # Extract the completed dataset for the current imputation
+  completed_data <- complete(MIA_data, imp_index)
+  
+  # Bin the imd_quintile variable into discrete categories
+  completed_data$binned_variable <- cut(completed_data$imd_quintile, 
+                                        breaks = breaks, 
+                                        labels = c("1", "2", "3", "4", "5"), 
+                                        include.lowest = TRUE)
+  
+  # Define the survey design object for the current imputed dataset
+  survey_design <- svydesign(ids = ~1, data = completed_data, weights = ~weight_gb)
+  
+  # Calculate the weighted frequency table for the binned variable
+  frequency_table <- svytable(~binned_variable, survey_design)
+  
+  # Store the raw frequencies as a numeric vector
+  weighted_frequency_tables[[imp_index]] <- as.numeric(frequency_table)
+}
+
+# Combine the weighted frequency tables across imputations
+pooled_weighted_frequencies <- Reduce(`+`, weighted_frequency_tables) / length(weighted_frequency_tables)
+
+# Display the pooled weighted frequencies (raw counts)
+print(pooled_weighted_frequencies)
+
+# Convert the frequencies to percentages
+total_weighted_count <- sum(pooled_weighted_frequencies)
+pooled_weighted_percentages <- pooled_weighted_frequencies / total_weighted_count * 100
+
+# Print the percentages
+print(pooled_weighted_percentages)
+
+
+```
+
+
+
+
+
+
+
+## Ethnicity
+
+
+
+```{r ethnicity tables}
+
+# Full list of ethnicities table
+tabyl(Clean_data$ethnic, sort = TRUE) 
+
+# Create a data frame from the frequency table
+ethnicity <- tabyl(Clean_data$ethnic, sort = TRUE)
+
+summary_df <- as.data.frame(ethnicity)
+
+# Export the correlation matrix to an Excel file
+# write_xlsx(summary_df, path = "WRITE PATHWAY - ethnicity.xlsx")
+
+
+# Binary variable for white ethnicity
+tabyl(Clean_data$dethnin, sort = TRUE) 
+
+
+```
+
+
+
+```{r Weighted ethnicity}
+
+
+# Define survey design object with weights
+survey_design <- svydesign(ids = ~1, data = Clean_data, weights = ~weight_gb)
+
+# Calculate the weighted frequency for 'nolo_monthly'
+weighted_ethn <- svytotal(~ethnic, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_ethn)
+
+
+# percentage form:
+weighted_ethn_percent <- weighted_ethn / sum(weighted_ethn) * 100
+print(weighted_ethn_percent)
+
+
+str(Clean_data)
+
+```
+
+
+
+----------------------------------------------------------------------------------------------------
+
+# Drinking motives
+
+The tables below report the number of responses for each response level in the 5 DMQ items.
+
+1.Enhancement 2.Social 3.Conformity 4.Depression 5.Anxiety
+
+```{r drinking motives frequency tables and bar charts}
+
+# Loop to produce a frequency table for DM 1 - 5
+lapply(Clean_data[paste0("naq1_0", 1:5)], tabyl)
+
+```
+
+
+
+
+
+```{r WEIGHTED drinking motives binary}
+
+
+### ENHANCEMENT
+# Calculate the weighted frequency for 'nolo_monthly'
+weighted_ENH <- svytotal(~enhBIN, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_ENH)
+
+
+# percentage form:
+weighted_ENH_percent <- weighted_ENH / sum(weighted_ENH) * 100
+print(weighted_ENH_percent)
+
+### SOCIAL
+# Calculate the weighted frequency for 'nolo_monthly'
+weighted_SOC <- svytotal(~socBIN, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_SOC)
+
+
+# percentage form:
+weighted_SOC_percent <- weighted_SOC / sum(weighted_SOC) * 100
+print(weighted_SOC_percent)
+
+
+
+### CONFORMITY
+
+# Calculate the weighted frequency for 'nolo_monthly'
+weighted_CON <- svytotal(~conBIN, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_CON)
+
+
+# percentage form:
+weighted_CON_percent <- weighted_CON / sum(weighted_CON) * 100
+print(weighted_CON_percent)
+
+
+### DEPRESSION
+# Calculate the weighted frequency for 'depBIN'
+weighted_DEP <- svytotal(~depBIN, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_DEP)
+
+
+# percentage form:
+weighted_DEP_percent <- weighted_DEP / sum(weighted_DEP) * 100
+print(weighted_DEP_percent)
+
+
+### ANXIETY
+# Calculate the weighted frequency for 'anxBIN'
+weighted_ANX <- svytotal(~anxBIN, survey_design, na.rm = TRUE)
+
+# Print the weighted frequency table
+print(weighted_ANX)
+
+
+# percentage form:
+weighted_ANX_percent <- weighted_ANX / sum(weighted_ANX) * 100
+print(weighted_ANX_percent)
+
+
+
+
+
+
+```
+
+
+```{r Create dummy variables for agez categories}
+
+
+
+# Convert 'agez' into dummy variables 
+dummy_variables <- model.matrix(~ agez - 1, data = Clean_data)
+
+# Get the column names of the dummy variables
+age_groups <- colnames(dummy_variables)
+
+# Create a frequency table for each age group
+for (age_group in age_groups) {
+  freq_table <- table(dummy_variables[, age_group])
+  print(paste("Frequency table for", age_group))
+  print(freq_table)
+}
+
+Clean_data <- cbind(Clean_data, dummy_variables)
+
+```
+
+
+
+```{r drinking motives descriptive tables and plots}
+
+
+# Frequency tables for the new variable to check figures correspond
+tabyl(Clean_data$enh5L, sort = TRUE)
+tabyl(Clean_data$soc5L, sort = TRUE)
+tabyl(Clean_data$con5L, sort = TRUE)
+tabyl(Clean_data$dep5L, sort = TRUE)
+tabyl(Clean_data$anx5L, sort = TRUE)
+
+# Run summary statistics for the updated drinking motive questions. 
+descr(Clean_data$enh5L) 
+descr(Clean_data$soc5L) 
+descr(Clean_data$con5L) 
+descr(Clean_data$dep5L) 
+descr(Clean_data$anx5L) 
+
+#Subset summary statistics for those who drink NoLo or not
+NoLo_drinkers_E = subset(Clean_data, nolo_monthly == "at least monthly")
+descr(NoLo_drinkers_E$enh5L) 
+NoLo_nondrinkers_E = subset(Clean_data, nolo_monthly == "less than monthly")
+descr(NoLo_nondrinkers_E$enh5L) 
+
+#Subset summary statistics for those who drink NoLo or not
+NoLo_drinkers = subset(Clean_data, nolo_monthly == "at least monthly")
+
+
+```
+
+----------------------------------------------------------------------------------------------------
+
+## Correlation table for variables used in analysis
+
+There was no evidence of multicollinearity between the IVs or DVs. 
+
+```{r Correlation table, message=FALSE}
+
+# List to store imputed datasets
+imputed_datasets <- vector("list", length = 18)
+
+# Number of imputations
+num_imputations <- 18
+
+# Loop through imputations
+for (imp_index in 1:18) {
+  # Extract imputed dataset
+  imputed_data <- complete(MIA_data, imp_index)
+
+  # Define the number of columns in your dataset
+  num_cols <- ncol(imputed_data[, c("nolo_monthly", "agez", "sexz", "ed4", "sg4R", "imd_quintile", "home_owner", "ft_emp", "auditc", "enh5L", "dep5L", "anx5L", "con5L", "soc5L")])
+
+  # Select variables from the imputed dataset
+  H1_IV <- imputed_data[, c("nolo_monthly", "agez", "sexz", "ed4", "sg4R", "imd_quintile", "home_owner", "ft_emp", "auditc", "enh5L", "dep5L", "anx5L", "con5L", "soc5L")]
+
+  # Convert all variables to be numerical
+  H1_IV <- as.data.frame(lapply(H1_IV, as.numeric))
+
+  # Calculate the correlation matrix for the current imputed dataset
+  cor_matrix <- cor(H1_IV, method = "spearman")
+
+  # Store the correlation matrix in the list
+  imputed_datasets[[imp_index]] <- cor_matrix
+}
+
+# Average the correlation matrices across imputations
+average_matrix <- apply(array(unlist(imputed_datasets), dim = c(num_cols, num_cols, num_imputations)), c(1, 2), mean)
+
+# Print the average correlation matrix to 3dp
+print(round(average_matrix, 3))
+
+
+
+```
+
+----------------------------------------------------------------------------------------------------

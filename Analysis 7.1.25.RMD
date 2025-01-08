@@ -1,0 +1,1113 @@
+---
+title: "Regressions"
+author: "LB"
+date: "28/02/2024"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+# Display code chunks
+knitr::opts_chunk$set(echo = TRUE)
+
+# Centre align all plots as default
+knitr::opts_chunk$set(fig.align = 'center')
+
+# Set working directory for code (this should apply to full file unless specified otherwise)
+knitr::opts_knit$set(root.dir = "Set WD") 
+```
+
+
+
+```{r load R libraries, include = FALSE} 
+
+# Above code prevents any error messages/ masked functions arising from this code chunk etc from displaying in the knitted document.
+
+# Identify packages required, but not yet installed and install them. 
+
+# 1. check whether required packages are already installed 
+packages <- c("tidyverse", "foreign", "janitor", "sjmisc", "readr", "tidymodels", "finalfit", "haven", "parsnip", "ggplot2", "gtools", "dplyr", "lavaan", "misty", "mice", "gridExtra", "car", "ordinal", "knitr", "rmarkdown", "pROC", "lmtest", "writexl", "miceadds", "survey")  
+
+# 2. identify which packages have not yet been installed     
+new_packages <- packages[!(packages %in% installed.packages()[ ,"Package"])]
+
+# 3. install any new packages
+if(length(new_packages)) {
+  install.packages(new_packages)
+}
+
+# Read in required libraries
+library(tidyverse)
+library(foreign) # this package is required to read in SPSS files
+library(dplyr) #this needs to be loaded after plyr. 
+library(janitor) # used for summary statistics
+library(sjmisc) # used for recoding into a new variable with label names
+library(readr)
+library(tidymodels)
+library(finalfit) #use this package when working with missing data
+library(ggplot2) #for plotting graphs
+library(haven) #use to assign variable and value labels
+library(parsnip) #used in logistic regression
+library(lavaan) #sem
+library(psych)
+library(mice) #multiple imputation using chained equations
+library(naniar) #use for little's test of mcar 
+library(misty) #for little's test of mcar 
+library(gridExtra) #for Cook's D
+library(car) #for Box Tidwell
+library(rmarkdown) #used in the next Markdown doc to run this document and render it
+library(broom) #creates a tidy frame from statistical test results. Recommended in http://www.sthda.com/english/articles/36-classification-methods-essentials/148-logistic-regression-assumptions-and-diagnostics-in-r/ 
+library(lmtest)  # runs likelihood ratio test to compare models and whether signif better without using base r
+library(writexl) # used to convert correlation matrix into excel spreadsheet for formatting into a table  
+library(miceadds) #adds CI to pooled results from MI 
+library(survey) # used for bar chart with CI
+
+
+```
+
+
+
+
+```{r LOAD data}
+
+# Load the imputed data from the RDS file
+# MIA_data <- readRDS("X:/HAR_SP/SP/STU_cmq21lcs/Impact of no and low alcohol/Behavioural model - Study 1/Data/Imputed_data_Study1_7_march.rds") # Earlier version without ranked DM
+
+MIA_data <- readRDS("PATHWAY - Imputed_data_Study1_12_nov.rds") # Read in data from where saved
+
+# Load the clean data from the RDS file (for analyses that do not require imputed data)
+Data_for_impute <- readRDS("PATHWAY - Clean_data_no_imputes.rds") # This is the datafile prior to imputation.
+
+```
+
+
+*CROSSTABS*
+This output is used for the study sample descriptives table and also is used to test the assumption of sufficient sample size for the regression models. 
+
+
+```{r Crosstabs for Sociodemographic variables}
+
+# Code uses mice
+# Store number of imputed datasets created 
+num_imputations <- 18
+
+# List to store crosstabs frequencies and percentages
+crosstabs_list <- vector("list", length = num_imputations)
+percentages_list <- vector("list", length = num_imputations)
+
+
+############## EDUCATION #####################
+
+# Loop through the 18 imputations
+for (imp_index in 1:num_imputations) {
+
+# Extract imputed dataset
+imputed_data <- complete(MIA_data, imp_index)
+  
+# Create crosstab for "nolo" and "ed4"
+crosstab_ed <- table(imputed_data$nolo_monthly, imputed_data$ed4)
+
+# Calculate percentages
+percentages_ed <- prop.table(crosstab_ed, margin = 2) * 100  
+  
+# Store the crosstab and percentages as a list
+crosstabs_list[[imp_index]] <- crosstab_ed
+percentages_list[[imp_index]] <- percentages_ed
+}
+
+# Average the crosstabs and percentages across imputations (optional)
+average_crosstab_ed <- Reduce(`+`, crosstabs_list) / num_imputations
+average_percentages_ed <- Reduce(`+`, percentages_list) / num_imputations
+
+# Display the crosstabs for education 
+print(average_crosstab_ed)
+print(average_percentages_ed)
+
+
+############## SOCIAL GRADE #####################
+
+# Loop through imputations
+for (imp_index in 1:num_imputations) {
+
+# Extract imputed dataset
+imputed_data <- complete(MIA_data, imp_index)
+
+# Create crosstab for "nolo" and "sg4R"
+crosstab_sg <- table(imputed_data$nolo_monthly, imputed_data$sg4R)
+
+# Calculate percentages
+percentages_sg <- prop.table(crosstab_sg, margin = 2) * 100 
+  
+# Store the crosstab and percentages in the lists
+crosstabs_list[[imp_index]] <- crosstab_sg
+percentages_list[[imp_index]] <- percentages_sg
+}
+
+# Average the crosstabs and percentages across imputations (optional)
+average_crosstab_sg <- Reduce(`+`, crosstabs_list) / num_imputations
+average_percentages_sg <- Reduce(`+`, percentages_list) / num_imputations
+
+# Print sg crosstabs and percentages
+print(average_crosstab_sg)
+print(average_percentages_sg)
+
+
+############## SOCIAL GRADE #####################
+
+# Loop through imputations
+for (imp_index in 1:num_imputations) {
+
+# Extract imputed dataset
+imputed_data <- complete(MIA_data, imp_index)
+
+# Create crosstab for "nolo" and "sexz"
+crosstab_sex <- table(imputed_data$nolo_monthly, imputed_data$sexz)
+
+# Calculate percentages
+percentages_sex <- prop.table(crosstab_sex, margin = 2) * 100 
+  
+# Store the crosstab and percentages in a list
+crosstabs_list[[imp_index]] <- crosstab_sex
+  percentages_list[[imp_index]] <- percentages_sex
+}
+
+# Average the crosstabs and percentages across imputations 
+average_crosstab_sex <- Reduce(`+`, crosstabs_list) / num_imputations
+average_percentages_sex <- Reduce(`+`, percentages_list) / num_imputations
+
+# Print sex/nolo crosstabs and percentages 
+print(average_crosstab_sex)
+print(average_percentages_sex)
+
+############## AGE #####################
+
+# Loop through imputations
+for (imp_index in 1:num_imputations) {
+
+# Extract imputed dataset
+imputed_data <- complete(MIA_data, imp_index)
+
+# Create crosstab for "nolo" and "agez"
+crosstab_age <- table(imputed_data$nolo_monthly, imputed_data$agez)
+
+# Calculate percentages
+percentages_age <- prop.table(crosstab_age, margin = 2) * 100 
+  
+# Store the crosstab and percentages in a list
+crosstabs_list[[imp_index]] <- crosstab_age
+percentages_list[[imp_index]] <- percentages_age
+}
+
+# Average the crosstabs and percentages across imputations (optional)
+average_crosstab_age <- Reduce(`+`, crosstabs_list) / num_imputations
+average_percentages_age <- Reduce(`+`, percentages_list) / num_imputations
+
+# Print or use the crosstabs and percentages as needed
+print(average_crosstab_age)
+print(average_percentages_age)
+
+
+```
+
+
+# Set DM as numeric and nolo_monthly as numeric as required by Box Tidwell assumption
+
+
+```{r SET VARIABLE TYPES}
+
+str(Data_for_impute)
+
+# Set DM as numeric
+
+Data_for_impute$enh5L <- as.numeric(Data_for_impute$enh5L)
+Data_for_impute$soc5L <- as.numeric(Data_for_impute$soc5L)
+Data_for_impute$anx5L <- as.numeric(Data_for_impute$anx5L)
+Data_for_impute$con5L <- as.numeric(Data_for_impute$con5L)
+Data_for_impute$dep5L <- as.numeric(Data_for_impute$dep5L)
+
+# Set nolo_monthly to be a factor (as required by Box Tidwell Test) (CHECK THIS AS NOTES ORIGINALLY SAID IT NEEDED TO BE A NUMERIC)
+
+Data_for_impute$nolo_monthly <- as.factor(Data_for_impute$nolo_monthly)
+
+```
+
+## Assumptions
+
+## Testing assumptions
+
+1. DV is binary - **yes**
+2. Observations are independent of each other.  i.e. observations should not come from repeated measurements or matched data - **yes**
+3. Little or no multicollinearity among the independent variables. This means that the independent variables should not be too highly correlated with each other. **yes** 
+4. 4. Identify any influential values/outliers - using Cook's distance for **continuous (numeric) variables only** (audit and DM). 
+$$Di = (ri2 / p*MSE) * (hii / (1-hii)2)$$ 
+**Cook's Distance** is assessed on the full model - see below.
+
+
+
+
+```{r Cook's Distance}
+
+
+H2m1 <- with(MIA_data, glm(nolo_monthly ~ sexz + agez + ed4 + sg4R + imd_quintile + auditc + I(auditc^2) + enh5L + soc5L + dep5L + anx5L + con5L + I(dep5L*log(dep5L)), family = "binomial"))
+
+
+# Pooling the results - Hyp 1 model 6
+pool.fith2m1 <- pool(H2m1)
+summary(pool.fith2m1)
+
+# Convert summary to a dataframe
+summary_df <- summary(pool.fith2m1)
+
+# Save the cleaned data to an excel file
+write.xlsx(summary_df, file = "Pathway - Regression_2.xlsx")
+
+# Use tidy to extract coefficients and standard errors
+tidy_results <- tidy(pool.fith2m1)
+
+# Filter out the intercept if needed
+tidy_results <- tidy_results[!tidy_results$term %in% "(Intercept)", ]
+
+# Calculate odds ratios and their confidence intervals
+OR <- exp(tidy_results$estimate)
+CI_lower <- exp(tidy_results$estimate - 1.96 * tidy_results$std.error)
+CI_upper <- exp(tidy_results$estimate + 1.96 * tidy_results$std.error)
+
+# Combine odds ratios and CI into a data frame
+OR_CI <- data.frame(
+  Term = tidy_results$term,
+  OddsRatio = OR,
+  `95% CI Lower` = CI_lower,
+  `95% CI Upper` = CI_upper
+)
+
+# Print the results
+print(OR_CI)
+
+# Save the OR to a datafile
+write.xlsx(OR_CI, file = "Pathway - OR_Regression_2.xlsx")
+
+
+
+
+# Calculate Cook's distance for each imputed dataset
+cooksD_list <- lapply(1:MIA_data$m, function(i) {
+  imp_data <- complete(MIA_data, action = i)
+  model2 <- glm(nolo_monthly ~ sexz + agez + ed4 + sg4R + imd_quintile + auditc + I(auditc^2) + enh5L + soc5L + dep5L + anx5L + con5L + I(dep5L^2),
+               data = imp_data,
+               family = "binomial")
+  cooks.distance(model2)
+})
+
+# Combine Cook's distance across all imputed datasets into a data frame
+cooksD_df <- do.call(cbind, cooksD_list) %>%
+  as.data.frame() %>%
+  mutate(average_cooksD = rowMeans(.))
+
+# Find the average Cook's D for each observation
+average_cooksD <- cooksD_df$average_cooksD
+
+# Plot Cook's D with a horizontal line at 4/n
+n <- nrow(complete(MIA_data, 1))
+plot(average_cooksD, main = "Cook's Distance for Hypothesis 2")
+abline(h = 4/n, lty = 2, col = "steelblue") # adds cut off
+
+# Set the Cook's distance threshold (4/n)
+threshold <- 4/n
+
+# Count the number of observations that exceed the threshold
+exceed_threshold_count <- sum(average_cooksD > threshold)
+
+# Print the count of observations exceeding the threshold
+print(exceed_threshold_count)
+
+
+# Extract model results for the first imputed dataset
+Model2.1 <- glm(nolo_monthly ~ sexz + agez + ed4 + sg4R + imd_quintile + auditc + I(auditc^2), family = "binomial", data = complete(MIA_data, 1))
+model2.data <- augment(Model2.1) %>% 
+  mutate(index = 1:n())
+
+# Data for the top 3 largest values, according to the Cook's distance, can be displayed as follows
+top_3_cooksd <- model2.data %>% top_n(3, .cooksd)
+print(top_3_cooksd)
+
+# Plot the standardized residuals for the first imputed dataset
+ggplot(model2.data, aes(index, .std.resid)) + 
+  geom_point(aes(color = nolo_monthly), alpha = .5) +
+  theme_bw()
+
+# Filter potential influential data points 
+influential_data <- model2.data %>% 
+  filter(abs(.std.resid) > 3)
+print(influential_data)
+
+
+# AIC and BIC 
+# Extract log-likelihood for each imputed dataset
+logLik_list <- sapply(H2m1$analyses, function(model) as.numeric(logLik(model)))
+
+# Print the log-likelihoods to verify
+cat("Log-Likelihoods from each model:\n", logLik_list, "\n")
+
+# Average log-likelihood
+average_logLik <- mean(logLik_list)
+
+# Print average log-likelihood to verify
+cat("Average Log-Likelihood:", average_logLik, "\n")
+
+# Summarize pooled results to get coefficients
+pooled_summary <- summary(pool.fith2m1)
+coef_list <- pooled_summary$estimate
+
+# Calculate the number of parameters
+k <- length(coef_list)
+
+# Print the coefficients and number of parameters to verify
+cat("Coefficients:\n")
+print(coef_list)
+cat("Number of Parameters (k):", k, "\n")
+
+# Calculate the number of observations
+n <- as.numeric(nrow(complete(MIA_data, action = 1)))
+
+# Print number of observations to verify
+cat("Number of Observations (n):", n, "\n")
+
+# Calculate AIC and BIC
+AIC_pooled <- -2 * average_logLik + 2 * k
+BIC_pooled <- -2 * average_logLik + log(n) * k
+
+
+
+
+# Print the results
+cat("AIC:", AIC_pooled, "\n")
+cat("BIC:", BIC_pooled, "\n")
+
+
+# R SQUARED
+# https://www.rdocumentation.org/packages/mice/versions/3.16.0/topics/pool.r.squared
+# pool.r.squared(object, adjusted = FALSE)
+# Can't use this as only suitable for linear models (lm) and not glm. 
+
+# So need to calculate pseudo R2 
+
+# Fit the null model (intercept only) on the same data
+null_model <- with(MIA_data, glm(nolo_monthly ~ 1, family = "binomial"))
+
+# Calculate log-likelihoods for each imputed dataset
+ll_full <- sapply(1:length(H2m1$analyses), function(i) logLik(H2m1$analyses[[i]]))
+ll_null <- sapply(1:length(null_model$analyses), function(i) logLik(null_model$analyses[[i]]))
+
+# Calculate McFadden's pseudo R2 for each dataset
+pseudo_r_squared <- 1 - (ll_full / ll_null)
+
+# Combine these pseudo-R-squared values across the imputed datasets
+# Average the pseudo-R-squared values
+pooled_pseudo_r_squared <- mean(pseudo_r_squared)
+
+# Print the pooled pseudo-R-squared
+print(pooled_pseudo_r_squared)
+
+
+
+
+```
+
+
+5. The sample size is sufficient.(https://www.statology.org/assumptions-of-logistic-regression/).
+10 Explanatory variables
+Probablity of NoLo consumed monthly = 22%
+Minimum sample = (10*10)/ 0.22 = 455 
+10 cases in all contingency table cells. 
+
+
+```{r  crosstabs for drinking motives}
+
+# Dep NoLo
+crosstab_H2dep <- table(Data_for_impute$dep5L, Data_for_impute$nolo_monthly)
+
+# Calculate row percentages
+row_percentages_H2dep <- round(prop.table(crosstab_H2dep, margin = 1) * 100, digits = 2)
+H2dep_ct <- cbind(crosstab_H2dep, row_percentages_H2dep)
+
+H2dep <- as.data.frame(H2dep_ct)
+colnames(H2dep) <- c("No", "Yes", "% No", "% Yes")
+
+print(H2dep)
+
+
+# Anx NoLo
+crosstab_H2anx <- table(Data_for_impute$anx5L, Data_for_impute$nolo_monthly)
+
+# Calculate row percentages
+row_percentages_H2anx <- round(prop.table(crosstab_H2anx, margin = 1) * 100, digits = 2)
+H2anx_ct <- cbind(crosstab_H2anx, row_percentages_H2anx)
+
+H2anx <- as.data.frame(H2anx_ct)
+colnames(H2anx) <- c("No", "Yes", "% No", "% Yes")
+
+print(H2anx)
+
+
+# Soc NoLo
+crosstab_H2soc <- table(Data_for_impute$soc5L, Data_for_impute$nolo_monthly)
+
+# Calculate row percentages
+row_percentages_H2soc <- round(prop.table(crosstab_H2soc, margin = 1) * 100, digits = 2)
+H2soc_ct <- cbind(crosstab_H2soc, row_percentages_H2soc)
+
+H2soc <- as.data.frame(H2soc_ct)
+colnames(H2soc) <- c("No", "Yes", "% No", "% Yes")
+
+print(H2soc)
+
+
+# Con NoLo
+crosstab_H2con <- table(Data_for_impute$con5L, Data_for_impute$nolo_monthly)
+
+# Calculate row percentages
+row_percentages_H2con <- round(prop.table(crosstab_H2con, margin = 1) * 100, digits = 2)
+H2con_ct <- cbind(crosstab_H2con, row_percentages_H2con)
+
+H2con <- as.data.frame(H2con_ct)
+colnames(H2con) <- c("No", "Yes", "% No", "% Yes")
+
+print(H2con)
+
+
+# Enh NoLo
+crosstab_H2enh <- table(Data_for_impute$enh5L, Data_for_impute$nolo_monthly)
+
+# Calculate row percentages
+row_percentages_H2enh <- round(prop.table(crosstab_H2enh, margin = 1) * 100, digits = 2)
+H2enh_ct <- cbind(crosstab_H2enh, row_percentages_H2enh)
+
+H2enh <- as.data.frame(H2enh_ct)
+colnames(H2enh) <- c("No", "Yes", "% No", "% Yes")
+
+print(H2enh)
+
+# Write each data frame to a separate sheet in an Excel file
+write_xlsx(list(
+  "Dep_NoLo" = H2dep,
+  "Anx_NoLo" = H2anx,
+  "Soc_NoLo" = H2soc,
+  "Con_NoLo" = H2con,
+  "Enh_NoLo" = H2enh
+), "DM_motives.xlsx")
+
+
+# Create a total score for drinking motive - see how many people reported never for all variables and all the time for all variables
+
+Data_for_impute$total_motive_score <- rowSums(Data_for_impute[, c("enh5L", "dep5L", "soc5L", "anx5L", "con5L")])
+
+tabyl(Data_for_impute$total_motive_score) 
+
+```
+The frequency chart for total motive score shows that 11% of respondents responded never to all motives. 
+
+
+6. Linearity of independent variables and log odds(logits). Although this analysis does not require the dependent and independent variables to be related linearly, it requires that the **continuous** independent variables are linearly related to the log odds (drinking motives).  The logit is a transformation of the probabilities from the model https://www.youtube.com/watch?v=sciPFNcYqi8 (this is for SPSS) accounts for the s shape in the DV as bound by 0 and 1. This is tested in the full model.
+* logit function is logit(p) = log(p/(1-p)), where p is the probabilities of the outcome * http://www.sthda.com/english/articles/36-classification-methods-essentials/148-logistic-regression-assumptions-and-diagnostics-in-r/
+
+
+
+
+```{r  Box Tidwell test FOR ADDED CONTINUOUS VARIABLES}
+
+
+# Regression model with logs for continuous variaables
+H2m1MIBT <- with(MIA_data, glm(nolo_monthly ~ sexz + agez + ed4 + sg4R + imd_quintile + (imd_quintile:log(imd_quintile)) + auditc + (auditc:log(auditc)) + enh5L + dep5L + soc5L + con5L + anx5L + (enh5L:log(enh5L)) + (dep5L:log(dep5L)) + (soc5L:log(soc5L)) + (anx5L:log(anx5L)) + (con5L:log(con5L)), family = "quasibinomial", weights = weight_gb))
+
+# This is the primary analysis using weighted data. Have used quasibinomial function because it can accept non-integer successes which is an issue when using weighted data in a binomial regression. 
+
+# Pooling the results - Hyp 2 model 1
+
+pool.fith2m1BT <- pool(H2m1MIBT)
+
+summary(pool.fith2m1BT)
+
+# Only auditc breaches the assumption so explore higher polynomials
+# AIC and BIC 
+# Extract log-likelihood for each imputed dataset
+logLik_list <- sapply(H2m1MIBT$analyses, function(model) as.numeric(logLik(model)))
+
+# Print the log-likelihoods to verify
+cat("Log-Likelihoods from each model:\n", logLik_list, "\n")
+
+# Average log-likelihood
+average_logLik <- mean(logLik_list)
+
+# Print average log-likelihood to verify
+cat("Average Log-Likelihood:", average_logLik, "\n")
+
+# Summarize pooled results to get coefficients
+pooled_summary <- summary(pool.fith2m1BT)
+coef_list <- pooled_summary$estimate
+
+# Calculate the number of parameters
+k <- length(coef_list)
+
+# Print the coefficients and number of parameters to verify
+cat("Coefficients:\n")
+print(coef_list)
+cat("Number of Parameters (k):", k, "\n")
+
+# Calculate the number of observations
+n <- as.numeric(nrow(complete(MIA_data, action = 1)))
+
+# Print number of observations to verify
+cat("Number of Observations (n):", n, "\n")
+
+# Calculate AIC and BIC
+AIC_pooled <- -2 * average_logLik + 2 * k
+BIC_pooled <- -2 * average_logLik + log(n) * k
+
+# Print the results
+cat("AIC:", AIC_pooled, "\n")
+cat("BIC:", BIC_pooled, "\n")
+
+
+
+
+
+
+
+
+
+
+```
+
+```{r Plot the relationship between audit and nolo}
+
+
+# Extract pooled coefficients
+pooled_coefs <- summary(pool.fith2m1BT)$estimate
+
+# Manually map coefficients based on the printed summary
+intercept_index <- 1  # (Intercept)
+auditc_index <- 15   # auditc
+interaction_index <- 22  # I(auditc * log(auditc))
+
+# Create a range of values for the independent variable 'auditc'
+auditc_range <- seq(min(MIA_data$data$auditc, na.rm = TRUE), max(MIA_data$data$auditc, na.rm = TRUE), length.out = 100)
+auditc_range <- auditc_range[auditc_range > 0]  # Remove non-positive values
+
+# Calculate each part separately
+intercept <- pooled_coefs[intercept_index]
+auditc_term <- pooled_coefs[auditc_index] * auditc_range
+interaction_term <- pooled_coefs[interaction_index] * (auditc_range * log(auditc_range))
+
+# Print the first few values of each term
+print(head(intercept))
+print(head(auditc_term))
+print(head(interaction_term))
+
+# Check for NAs in each part
+print(any(is.na(intercept)))
+print(any(is.na(auditc_term)))
+print(any(is.na(interaction_term)))
+
+# Calculate the log-odds for each value of 'auditc'
+log_odds <- intercept + auditc_term + interaction_term
+
+# Check for any missing values in log_odds
+print(any(is.na(log_odds)))
+
+# Print the first few values of log_odds to debug
+print(head(log_odds))
+
+# Create a data frame for plotting
+plot_data <- data.frame(auditc = auditc_range, log_odds = log_odds)
+
+# Plot the relationship between 'auditc' and log-odds
+ggplot(plot_data, aes(x = auditc, y = log_odds)) +
+  geom_line(color = "blue") +
+  labs(title = "Relationship between auditc and Log-Odds of nolo_monthly",
+       x = "auditc",
+       y = "Log-Odds") +
+  theme_minimal()
+
+
+```
+
+
+```{r Primary Analysis - Regression using MI and Audit quadratic}
+
+
+H2S2 <- with(MIA_data, glm(nolo_monthly ~ enh5L + soc5L + con5L + anx5L + dep5L + auditc + I(auditc^2) + sexz + agez + ed4 + sg4R + imd_quintile, family = "quasibinomial", weights = weight_gb))
+# 
+# # Pooling the results - Hyp 1 model 7
+# 
+pool.fith2s2 <- pool(H2S2)
+# 
+summary(pool.fith2s2)
+
+# Use tidy to extract coefficients and standard errors
+tidy_results <- tidy(pool.fith2s2)
+
+# Filter out the intercept if needed
+tidy_results <- tidy_results[!tidy_results$term %in% "(Intercept)", ]
+
+# Calculate odds ratios and their confidence intervals
+OR <- exp(tidy_results$estimate)
+CI_lower <- exp(tidy_results$estimate - 1.96 * tidy_results$std.error)
+CI_upper <- exp(tidy_results$estimate + 1.96 * tidy_results$std.error)
+
+# Combine odds ratios and CI into a data frame
+OR_CI <- data.frame(
+  Term = tidy_results$term,
+  OddsRatio = OR,
+  `95% CI Lower` = CI_lower,
+  `95% CI Upper` = CI_upper
+)
+
+# Print the results
+print(OR_CI)
+
+# AIC and BIC 
+# Extract log-likelihood for each imputed dataset
+logLik_list <- sapply(H2S2$analyses, function(model) as.numeric(logLik(model)))
+
+# Print the log-likelihoods to verify
+cat("Log-Likelihoods from each model:\n", logLik_list, "\n")
+
+# Average log-likelihood
+average_logLik <- mean(logLik_list)
+
+# Print average log-likelihood to verify
+cat("Average Log-Likelihood:", average_logLik, "\n")
+
+# Summarize pooled results to get coefficients
+pooled_summary <- summary(pool.fith2s2)
+coef_list <- pooled_summary$estimate
+
+# Calculate the number of parameters
+k <- length(coef_list)
+
+# Print the coefficients and number of parameters to verify
+cat("Coefficients:\n")
+print(coef_list)
+cat("Number of Parameters (k):", k, "\n")
+
+# Calculate the number of observations
+n <- as.numeric(nrow(complete(MIA_data, action = 1)))
+
+# Print number of observations to verify
+cat("Number of Observations (n):", n, "\n")
+
+# Calculate AIC and BIC
+AIC_pooled <- -2 * average_logLik + 2 * k
+BIC_pooled <- -2 * average_logLik + log(n) * k
+
+# Print the results
+cat("AIC:", AIC_pooled, "\n")
+cat("BIC:", BIC_pooled, "\n")
+
+# Load necessary libraries
+library(broom)       # For tidy() function
+library(officer)     # For Word export
+library(flextable)   # For table formatting
+
+# Extract coefficients and standard errors using tidy
+tidy_results <- tidy(pool.fith2s2)
+
+# Remove intercept if not needed
+# tidy_results <- tidy_results[tidy_results$term != "(Intercept)", ]
+
+# Calculate odds ratios and 95% confidence intervals
+OR <- exp(tidy_results$estimate)
+CI_lower <- exp(tidy_results$estimate - 1.96 * tidy_results$std.error)
+CI_upper <- exp(tidy_results$estimate + 1.96 * tidy_results$std.error)
+
+# Round the values as specified
+OR <- round(OR, 2)
+CI_lower <- round(CI_lower, 2)
+CI_upper <- round(CI_upper, 2)
+p_values <- round(tidy_results$p.value, 3)
+
+# Combine results into a data frame
+results <- data.frame(
+  Term = tidy_results$term,
+  Odds_Ratio = OR,
+  `95% CI` = paste0("(", CI_lower, ", ", CI_upper, ")"),
+  P_Value = p_values
+)
+
+# Print the results to verify
+print(results)
+
+# Convert the results to a flextable
+results_table <- flextable(results)
+
+# Format the flextable (optional)
+results_table <- autofit(results_table)
+results_table <- theme_vanilla(results_table)
+
+# Create a new Word document
+doc <- read_docx()
+
+# Add the flextable to the Word document
+doc <- body_add_flextable(doc, value = results_table)
+
+# Export the Word document to your working directory
+print(doc, target = "Primary_analysis.docx")
+
+
+```
+
+
+
+```{r SENSITITIVITY ANALYSIS USING COMPLETE CASES}
+
+# For the results to be comparable I need to set the ordinal variables as numeric and then present the polynomial terms 
+
+Data_for_impute$agez <- as.ordered(Data_for_impute$agez)
+Data_for_impute$ed4 <- as.ordered(Data_for_impute$ed4)
+Data_for_impute$sg4R <- as.ordered(Data_for_impute$sg4R)
+
+str(Data_for_impute$agez)
+
+# H2sM1 <- with(
+#   na.omit(Data_for_impute[, c("nolo_monthly", "enh5L", "dep5L", "soc5L", "con5L", "anx5L", 
+#                              "auditc", "sexz", "agez", "ed4", "sg4R", "imd_quintile", "weight_gb")]), 
+#   glm(
+#     nolo_monthly ~ enh5L + dep5L + soc5L + con5L + anx5L +
+#       auditc + I(auditc^2) +
+#       sexz +
+#       agez + I(agez^2) + I(agez^3) + I(agez^4) + I(agez^5)    +   
+#       ed4 + I(ed4^2) +  I(ed4^3)    +
+#       sg4R + I(sg4R^2) +  I(sg4R^3)   +
+#       imd_quintile,           
+#     family = "quasibinomial", 
+#     weights = weight_gb
+#   )
+# )
+# 
+
+
+H2sM1 <- with(Data_for_impute, glm(nolo_monthly ~ enh5L + dep5L + soc5L + con5L + anx5L + auditc + I(auditc^2) + sexz + agez + ed4 + sg4R + imd_quintile, family = "quasibinomial", weights = weight_gb))
+
+# This is the primary analysis using weighted data. Have used quasibinomial function because it can accept non-integer successes which is an issue when using weighted data in a binomial regression.
+
+# Summarise results
+
+summary(H2sM1)
+
+# Load necessary libraries
+library(officer)
+library(flextable)
+
+# Summarize the model to get coefficients and standard errors
+model_summary <- summary(H2sM1)
+
+# Extract coefficients and standard errors
+coef_estimates <- model_summary$coefficients[, "Estimate"]
+std_errors <- model_summary$coefficients[, "Std. Error"]
+
+# Calculate z-scores and p-values manually
+z_scores <- coef_estimates / std_errors
+p_values <- 2 * (1 - pnorm(abs(z_scores)))  # Two-tailed p-value calculation
+
+# Calculate odds ratios and 95% confidence intervals
+odds_ratios <- exp(coef_estimates)
+ci_lower <- exp(coef_estimates - 1.96 * std_errors)
+ci_upper <- exp(coef_estimates + 1.96 * std_errors)
+
+# Format values to the specified decimal places
+odds_ratios <- round(odds_ratios, 2)
+ci_lower <- round(ci_lower, 2)
+ci_upper <- round(ci_upper, 2)
+p_values <- round(p_values, 3)
+
+# Combine results into a data frame
+results <- data.frame(
+  Term = rownames(model_summary$coefficients),
+  Odds_Ratio = odds_ratios,
+  CI_Lower = ci_lower,
+  CI_Upper = ci_upper,
+  P_Value = p_values
+)
+
+# Create a new column for formatted confidence intervals
+results$CI <- paste0("(", results$CI_Lower, ", ", results$CI_Upper, ")")
+
+# Select relevant columns for the final table
+results <- results[, c("Term", "Odds_Ratio", "CI", "P_Value")]
+
+# Print the results table to verify
+print(results)
+
+# Need to find code to get the co-efficients for the OR - would go in supp table.
+
+# Convert the results data frame to a flextable
+results_table <- flextable(results)
+
+# Autofit columns and apply a simple theme
+results_table <- autofit(results_table)
+results_table <- theme_vanilla(results_table)
+
+# Create a new Word document
+doc <- read_docx()
+
+# Add the table to the Word document
+doc <- body_add_flextable(doc, value = results_table)
+
+# Export the Word document to your working directory
+print(doc, target = "Model_Results_with_OR_CI_P2.docx")
+
+# NUmber of complete cases
+# Identify the variables used in the model
+variables <- c("nolo_monthly", "sexz", "agez", "ed4", "sg4R", "imd_quintile",
+               "auditc", "enh5L", "dep5L", "soc5L", "con5L", "anx5L", "weight_gb")
+
+# Filter the dataset to include only the variables in the model
+data_used <- Data_for_impute[, variables]
+
+# Calculate the number of complete cases
+n_complete_cases <- sum(complete.cases(data_used))
+
+# Print the number of complete cases
+cat("Number of complete cases:", n_complete_cases, "\n")
+
+```
+
+
+
+```{r SENSITIVITY ANALYSIS USING DMBIN VARS}
+
+
+######################## MODEL 1 ###############################################
+
+H2S2 <- with(MIA_data, glm(nolo_monthly ~ enhBIN + socBIN + conBIN + anxBIN + depBIN + auditc + I(auditc^2) + sexz + agez + ed4 + sg4R + imd_quintile, family = "quasibinomial", weights = weight_gb))
+# 
+# # Pooling the results - Hyp 1 model 7
+# 
+pool.fith2s2 <- pool(H2S2)
+# 
+summary(pool.fith2s2)
+
+# Use tidy to extract coefficients and standard errors
+tidy_results <- tidy(pool.fith2s2)
+
+# Filter out the intercept if needed
+tidy_results <- tidy_results[!tidy_results$term %in% "(Intercept)", ]
+
+# Calculate odds ratios and their confidence intervals
+OR <- exp(tidy_results$estimate)
+CI_lower <- exp(tidy_results$estimate - 1.96 * tidy_results$std.error)
+CI_upper <- exp(tidy_results$estimate + 1.96 * tidy_results$std.error)
+
+# Combine odds ratios and CI into a data frame
+OR_CI <- data.frame(
+  Term = tidy_results$term,
+  OddsRatio = OR,
+  `95% CI Lower` = CI_lower,
+  `95% CI Upper` = CI_upper
+)
+
+# Print the results
+print(OR_CI)
+
+# AIC and BIC 
+# Extract log-likelihood for each imputed dataset
+logLik_list <- sapply(H2S2$analyses, function(model) as.numeric(logLik(model)))
+
+# Print the log-likelihoods to verify
+cat("Log-Likelihoods from each model:\n", logLik_list, "\n")
+
+# Average log-likelihood
+average_logLik <- mean(logLik_list)
+
+# Print average log-likelihood to verify
+cat("Average Log-Likelihood:", average_logLik, "\n")
+
+# Summarize pooled results to get coefficients
+pooled_summary <- summary(pool.fith2s2)
+coef_list <- pooled_summary$estimate
+
+# Calculate the number of parameters
+k <- length(coef_list)
+
+# Print the coefficients and number of parameters to verify
+cat("Coefficients:\n")
+print(coef_list)
+cat("Number of Parameters (k):", k, "\n")
+
+# Calculate the number of observations
+n <- as.numeric(nrow(complete(MIA_data, action = 1)))
+
+# Print number of observations to verify
+cat("Number of Observations (n):", n, "\n")
+
+# Calculate AIC and BIC
+AIC_pooled <- -2 * average_logLik + 2 * k
+BIC_pooled <- -2 * average_logLik + log(n) * k
+
+# Print the results
+cat("AIC:", AIC_pooled, "\n")
+cat("BIC:", BIC_pooled, "\n")
+
+# Load necessary libraries
+library(broom)       # For tidy() function
+library(officer)     # For Word export
+library(flextable)   # For table formatting
+
+# Extract coefficients and standard errors using tidy
+tidy_results <- tidy(pool.fith2s2)
+
+# Remove intercept if not needed
+# tidy_results <- tidy_results[tidy_results$term != "(Intercept)", ]
+
+# Calculate odds ratios and 95% confidence intervals
+OR <- exp(tidy_results$estimate)
+CI_lower <- exp(tidy_results$estimate - 1.96 * tidy_results$std.error)
+CI_upper <- exp(tidy_results$estimate + 1.96 * tidy_results$std.error)
+
+# Round the values as specified
+OR <- round(OR, 2)
+CI_lower <- round(CI_lower, 2)
+CI_upper <- round(CI_upper, 2)
+p_values <- round(tidy_results$p.value, 3)
+
+# Combine results into a data frame
+results <- data.frame(
+  Term = tidy_results$term,
+  Odds_Ratio = OR,
+  `95% CI` = paste0("(", CI_lower, ", ", CI_upper, ")"),
+  P_Value = p_values
+)
+
+# Print the results to verify
+print(results)
+
+# Convert the results to a flextable
+results_table <- flextable(results)
+
+# Format the flextable (optional)
+results_table <- autofit(results_table)
+results_table <- theme_vanilla(results_table)
+
+# Create a new Word document
+doc <- read_docx()
+
+# Add the flextable to the Word document
+doc <- body_add_flextable(doc, value = results_table)
+
+# Export the Word document to your working directory
+print(doc, target = "Sensitivity_analysis_Binary.docx")
+
+
+
+```
+
+The no and yes columns add up to 2555 as expected. 
+
+
+https://stats.stackexchange.com/questions/626459/if-my-logistic-regression-model-is-performing-well-does-it-matter-if-my-feature
+
+
+
+
+```{r Weighted Binary plot with CI}
+
+# Function to calculate weighted percentages, SE, and CIs
+calculate_weighted_percentages <- function(data, var, var_name, weight_var) {
+  # Create a survey design object with the weight variable
+  survey_design <- svydesign(ids = ~1, data = data, weights = as.formula(paste0("~", weight_var)))
+  
+  # Create a table of weighted counts for the variable
+  weighted_table <- svytable(as.formula(paste0("~", var, "+ nolo_monthly")), design = survey_design)
+  
+  # Convert the table to a data frame
+  weighted_df <- as.data.frame(weighted_table)
+  colnames(weighted_df) <- c("Motive_Level", "NoLo_Monthly", "Weighted_Count")
+  
+  # Calculate percentages by dividing Weighted_Count by the total count per level
+  weighted_df <- weighted_df %>%
+    group_by(Motive_Level) %>%
+    mutate(
+      Total = sum(Weighted_Count),  # Total weighted count for each Motive_Level
+      Count = Weighted_Count[NoLo_Monthly == "at least monthly"],  # Count of "at least monthly" drinkers
+      Percentage = (Count / Total) * 100,  # Calculate weighted percentage
+      SE = sqrt((Percentage * (100 - Percentage)) / Total),  # Standard error
+      Lower_CI = Percentage - 1.96 * SE,  # Lower bound of 95% CI
+      Upper_CI = Percentage + 1.96 * SE   # Upper bound of 95% CI
+    ) %>%
+    ungroup()
+  
+  # Add variable name to the dataframe for faceting
+  weighted_df$Variable <- var_name
+  
+  # Filter for "at least monthly" drinkers
+  weighted_df %>% filter(NoLo_Monthly == "at least monthly")
+}
+
+# Apply the function to all motives
+H2dep <- calculate_weighted_percentages(Data_for_impute, "depBIN", "Depression", "weight_gb")
+H2anx <- calculate_weighted_percentages(Data_for_impute, "anxBIN", "Anxiety", "weight_gb")
+H2soc <- calculate_weighted_percentages(Data_for_impute, "socBIN", "Social", "weight_gb")
+H2con <- calculate_weighted_percentages(Data_for_impute, "conBIN", "Conformity", "weight_gb")
+H2enh <- calculate_weighted_percentages(Data_for_impute, "enhBIN", "Enhancement", "weight_gb")
+
+# Combine all motives into one data frame
+combined_data_long <- bind_rows(H2dep, H2anx, H2soc, H2con, H2enh)
+
+# Check the resulting data
+head(combined_data_long)
+
+# plot with CI
+ggplot(combined_data_long, aes(x = Motive_Level, y = Percentage, fill = Motive_Level)) +
+  geom_hline(yintercept = 0) +  # Add baseline here
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) +  # Bar chart
+  geom_errorbar(
+    aes(ymin = Lower_CI, ymax = Upper_CI), 
+    position = position_dodge(width = 0.7), 
+    width = 0.2
+  ) +
+  geom_text(
+    aes(label = paste0(round(Percentage, 0), "%")), 
+    position = position_dodge(width = 0.7), 
+    vjust = -4.5,  # Move text labels above CI bars
+    size = 3       # Font size for bar labels
+  ) +  
+  facet_wrap(~ Variable, scales = "fixed", ncol = 5, strip.position = "bottom") +
+  labs(
+    y = "Weighted percentage of those who drink \nno/lo at least monthly", 
+    fill = "Level of endorsement"
+  ) +
+  scale_fill_manual(values = c("lightblue", "blue")) +
+  scale_y_continuous(limits = c(0, 50)) +  # Adjust Y-axis if needed for extra space
+  theme_minimal() +
+  theme(
+    legend.position = "bottom", 
+    strip.text = element_text(size = 10),  # Size for facet labels
+    axis.text.y = element_text(size = 10),  # Font size for y-axis text
+    axis.title.y = element_text(size = 10),  # Font size for y-axis title
+    axis.text.x = element_blank(),  # Remove x-axis text
+    axis.title.x = element_blank(),  # Remove x-axis title
+    strip.background = element_blank(), 
+    panel.spacing = unit(1, "lines"), 
+    plot.margin = unit(c(1, 1, 1, 1), "lines")
+  )
+
+
+
+
+
+
+
+```
+
+```{r Weighted confidence intervals for binary DM}
+
+filter(combined_data_long, Variable == "Anxiety")
+filter(combined_data_long, Variable == "Conformity")
+filter(combined_data_long, Variable == "Depression")
+filter(combined_data_long, Variable == "Enhancement")
+filter(combined_data_long, Variable == "Social")
+```
+
+
